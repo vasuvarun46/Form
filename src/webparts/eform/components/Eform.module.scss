@@ -1,0 +1,135 @@
+﻿
+/* Eform.module.scss  âœ… ONLY required code */
+
+/* webpart root */
+.eform {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+}
+:global(.pdf-thai) {
+  font-family: 'Noto Sans Thai', 'Segoe UI', Arial, sans-serif;
+}
+
+/* (optional) bigger width in workbench */
+:global(#workbenchPageContent) {
+  margin: 0 !important;
+  max-width: 1900px !important;
+}
+
+
+
+/* 1) Hide M365 suite bar + site header + command bar */
+:global(body.gq-eform-fullpage #SuiteNavWrapper),
+:global(body.gq-eform-fullpage #SuiteNavPlaceHolder),
+:global(body.gq-eform-fullpage div[data-automation-id="SuiteNav"]),
+:global(body.gq-eform-fullpage div[data-automation-id="SuiteNavPlaceHolder"]),
+:global(body.gq-eform-fullpage header[data-automationid="SiteHeader"]),
+:global(body.gq-eform-fullpage #spSiteHeader),
+:global(body.gq-eform-fullpage div[data-automation-id="SiteHeader"]){
+  display: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+/* 2) Hide left navigation */
+:global(body.gq-eform-fullpage #spLeftNav),
+:global(body.gq-eform-fullpage div[data-automation-id="SideNav"]),
+:global(body.gq-eform-fullpage div[data-automation-id="LeftNav"]),
+:global(body.gq-eform-fullpage div[data-automation-id="QuickLaunch"]),
+:global(body.gq-eform-fullpage nav[role="navigation"]) {
+  display: none !important;
+  width: 0 !important;
+}
+
+/* 3) Remove canvas padding / max-width so webpart is full width */
+:global(body.gq-eform-fullpage #spPageCanvasContent),
+:global(body.gq-eform-fullpage .spPageCanvasContent),
+:global(body.gq-eform-fullpage .CanvasZone),
+:global(body.gq-eform-fullpage .canvasZoneContainer),
+:global(body.gq-eform-fullpage .controlZone),
+:global(body.gq-eform-fullpage [data-automation-id="CanvasZone"]),
+:global(body.gq-eform-fullpage [data-automation-id="CanvasZoneContainer"]) {
+  padding: 0 !important;
+  margin: 0 !important;
+  max-width: none !important;
+  width: 100% !important;
+}
+
+/* 4) Remove left spacing SharePoint keeps */
+:global(body.gq-eform-fullpage .spAppAndPropertyPanelContainer),
+:global(body.gq-eform-fullpage #sp-appBar),
+:global(body.gq-eform-fullpage div[data-automation-id="contentScrollRegion"]) {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+}
+
+/* 5) Keep SharePoint page from scrolling (AppShell <main> should scroll) */
+:global(html),
+:global(body) {
+  height: 100%;
+  overflow-x: hidden;
+}
+
+:global(body.gq-eform-fullpage) {
+  overflow: hidden !important;
+}
+
+:global(body.gq-eform-fullpage #spPageCanvasContent),
+:global(body.gq-eform-fullpage .spPageCanvasContent),
+:global(body.gq-eform-fullpage div[data-automation-id="contentScrollRegion"]) {
+  height: 100vh !important;   /* âœ… use viewport height */
+  overflow: hidden !important; /* âœ… no SharePoint scroll */
+}
+
+/* âœ… Hide the SharePoint/M365 left App Bar (icon rail) */
+:global(body.gq-eform-fullpage #sp-appBar),
+:global(body.gq-eform-fullpage #sp-appBarContainer),
+:global(body.gq-eform-fullpage .sp-appBar),
+:global(body.gq-eform-fullpage .spAppBar),
+:global(body.gq-eform-fullpage [data-automation-id="sp-appBar"]),
+:global(body.gq-eform-fullpage [data-automation-id="spAppBar"]),
+:global(body.gq-eform-fullpage [data-automation-id="appBar"]) {
+  display: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+/* âœ… Remove any left spacing SharePoint keeps after hiding it */
+:global(body.gq-eform-fullpage #spPageChromeAppContainer),
+:global(body.gq-eform-fullpage .spAppAndPropertyPanelContainer),
+:global(body.gq-eform-fullpage div[data-automation-id="contentScrollRegion"]) {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+  left: 0 !important;
+}
+
+
+:global(.CanvasComponent.LCS .grid::before),
+:global(.CanvasComponent.LCS .grid::after) {
+  content: none !important;
+  display: none !important;
+}
+ 
+/* Hide SharePoint/M365 top loading indicator line in fullpage mode */
+:global(body.gq-eform-fullpage #SuiteNavWrapper [role="progressbar"]),
+:global(body.gq-eform-fullpage #spSiteHeader [role="progressbar"]),
+:global(body.gq-eform-fullpage [data-automationid="SiteHeader"] [role="progressbar"]),
+:global(body.gq-eform-fullpage [data-automation-id="SiteHeader"] [role="progressbar"]),
+:global(body.gq-eform-fullpage .ms-ProgressIndicator-itemBar),
+:global(body.gq-eform-fullpage .ms-ProgressIndicator-progressBar) {
+  opacity: 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  display: none !important;
+  pointer-events: none !important;
+}
+ 
+
+
+
+
