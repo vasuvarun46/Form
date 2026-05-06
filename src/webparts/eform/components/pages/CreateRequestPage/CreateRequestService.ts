@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
 import { SPHttpClient, SPHttpClientResponse, HttpClient } from "@microsoft/sp-http";
 import { CostCenterOption, FlowItemResponse, IItemRow, ISuparaItem, ItemRowErrors, IUsageState, ODataResponse, PurposeOption, SPFileItem } from "./createRequestTypes";
-import { logger } from "../../utils/logger";
+
 
 /* =========================================================
    Flow URL
@@ -119,7 +119,7 @@ export async function buildApprovalChainFromLists(
 
   if (!approvalFlagFields.length) return fallback("NO_LOA_FLAG_FIELDS");
 
-  logger.log("[ApprovalChain] LOA flag fields:", approvalFlagFields.map(f => `${f.Title} (${f.InternalName})`));
+
 
   // ── 2. FETCH EForm Users fields ──────────────────────────────────────────
   const userFieldsUrl =
@@ -143,7 +143,7 @@ export async function buildApprovalChainFromLists(
     return true;
   });
 
-  logger.log("[ApprovalChain] Matched email fields:", emailFields.map(f => `Title="${f.Title}" Internal="${f.InternalName}"`));
+
 
   // ── 3. BUILD ROLE KEY HELPERS ────────────────────────────────────────────
   const normalize = (s: string): string =>
@@ -178,7 +178,7 @@ export async function buildApprovalChainFromLists(
     }
   }
 
-  logger.log("[ApprovalChain] Email field map:", Array.from(emailFieldMap.entries()));
+
 
   // ── 4. FETCH REQUESTER row from EForm Users ──────────────────────────────
   const emailFieldNames = emailFields.map((f) => f.InternalName).join(",");
@@ -232,7 +232,7 @@ export async function buildApprovalChainFromLists(
   const isSingleApproval = enabledFlags.length === 1;
   const finalApprovalType = isSingleApproval ? "SingleApprover" : "MultipleApprover";
 
-  logger.log(`[ApprovalChain] Approval type: ${finalApprovalType} (${enabledFlags.length} flag(s) enabled)`);
+
 
   // ── 9. BUILD ORDERED LEVELS (LOW → HIGH authority) ───────────────────────
   const approvalFlagFieldsLowToHigh = approvalFlagFields.slice().reverse();
@@ -256,13 +256,10 @@ export async function buildApprovalChainFromLists(
       if (emailColInternalName) break;
     }
 
-    logger.log(
-      `[ApprovalChain] Flag "${flagField.Title}": keys=${JSON.stringify(candidates)}, ` +
-      `emailCol="${emailColInternalName || 'NOT FOUND'}"`
-    );
+
 
     if (!emailColInternalName) {
-      logger.log(`[ApprovalChain] Skipping "${flagField.Title}" — no email column found`);
+
       continue;
     }
 
@@ -271,7 +268,7 @@ export async function buildApprovalChainFromLists(
     if (isSingleApproval) {
       const emailKey = approverEmail.toUpperCase();
       if (approverEmail && seenEmails.has(emailKey)) {
-        logger.log(`[ApprovalChain] Skipping "${flagField.Title}" — duplicate email "${approverEmail}"`);
+
         continue;
       }
       if (approverEmail) seenEmails.add(emailKey);
@@ -284,10 +281,7 @@ export async function buildApprovalChainFromLists(
     });
   }
 
-  logger.log(
-    "[ApprovalChain] rawLevels (LOW→HIGH, enabled only):",
-    rawLevels.map(r => `${r.roleName}: "${r.approverEmail || 'EMPTY'}"`)
-  );
+
 
   // ── 10. CLIMB UP if lowest level has no email ────────────────────────────
   const levelsWithEmail = rawLevels.filter(r => r.approverEmail);
@@ -318,7 +312,7 @@ export async function buildApprovalChainFromLists(
   } else {
     for (const level of rawLevels) {
       if (!level.approverEmail) {
-        logger.log(`[ApprovalChain] Skipping stage for "${level.roleName}" — empty email`);
+
         continue;
       }
       const approverId = await resolveUserId(level.approverEmail);
@@ -370,10 +364,7 @@ export async function buildApprovalChainFromLists(
     ? approvalFlagFieldsLowToHigh.findIndex((f) => f.InternalName === singleEnabledFlagInternalName)
     : -1;
 
-  logger.log(
-    `[ApprovalChain] Single enabled flag: "${singleEnabledFlagInternalName || 'N/A'}", ` +
-    `threshold order index in LowToHigh: ${singleEnabledOrderIndex}`
-  );
+
 
   const allApprovalLevels: ApprovalLevel[] = [];
 
@@ -434,10 +425,7 @@ export async function buildApprovalChainFromLists(
   const pendingStages = stages.slice(1);
   const hasMultipleApprovals = stages.length > 1;
 
-  logger.log(
-    `[ApprovalChain] FINAL: type=${finalApprovalType}, stages=${stages.length}, ` +
-    `firstApprover="${firstStage.approverEmail}"`
-  );
+
 
   return {
     approvalLabel: finalApprovalType,
@@ -690,35 +678,18 @@ export const getUserDataFromSharePoint = async (
 
 export const loadMasters = async (
   context: WebPartContext,
+  deptId: number | null,
   setPurposes: (v: PurposeOption[]) => void,
   setCostCenters: (v: CostCenterOption[]) => void
 ): Promise<void> => {
   const siteUrl: string = context.pageContext.web.absoluteUrl;
-  const costCenterInternalName: string = "CostCenterCode";
+  const costCenterInternalName = "CostCenterCode";
 
-  // 1) Get login user's department id from RequesterDirectory
-  const userRows = await getUserDataFromSharePoint(context);
-  // const userRole = String(userRows?.[0]?.JobPosition || "").trim().toUpperCase();
-  //const isGlobalRoleUser = userRole === "CEO" || userRole === "CFO";
-  const deptId =
-    userRows?.[0]?.Department?.Id ??
-
-    null;
-
-  const purposeUrl: string =
+  const purposeUrl =
     `${siteUrl}/_api/web/lists/getbytitle('PurposeMaster')/items` +
-    `?$top=5000` +
-    `&$select=Id,Title,IsActive` +
-    `&$filter=IsActive eq 1` +
-    `&$orderby=Title`;
+    `?$top=5000&$select=Id,Title,IsActive&$filter=IsActive eq 1&$orderby=Title`;
 
-  // 2) Filter CostCenterMaster by DepartmentId (lookup filter) + IsActive
-  //    Also expand Department to map it into CostCenterOption
-  // const deptFilter = isGlobalRoleUser
-  //   ? ` and Department/Title eq 'GLOBAL'`
-  //   : (deptId ? ` and Department/Id eq ${deptId}` : "");
-  logger.log(deptId);
-  const costUrl: string =
+  const costUrl =
     `${siteUrl}/_api/web/lists/getbytitle('CostCenterMaster')/items` +
     `?$top=5000` +
     `&$select=Id,Title,${costCenterInternalName},IsActive,Department/Id,Department/Title` +
@@ -726,35 +697,38 @@ export const loadMasters = async (
     `&$filter=IsActive eq 1 and Department/Id eq ${deptId}` +
     `&$orderby=Title`;
 
+  type PurposeItem = { Id: number; Title: string; IsActive: boolean };
+
+  type CostCenterItem = {
+    Id: number;
+    Title: string;
+    IsActive: boolean;
+    Department?: { Id: number; Title: string };
+    [key: string]: unknown;
+  };
+
   const [pJson, cJson] = await Promise.all([
-    spGet<ODataResponse<{ Id: number; Title: string; IsActive: boolean }>>(context, purposeUrl),
-    spGet<
-      ODataResponse<
-        { Id: number; Title: string; IsActive: boolean; Department?: { Id: number; Title: string } } &
-        Record<string, unknown>
-      >
-    >(context, costUrl),
+    spGet<ODataResponse<PurposeItem>>(context, purposeUrl),
+    spGet<ODataResponse<CostCenterItem>>(context, costUrl),
   ]);
 
-  logger.log("deptId:", deptId);
-  logger.log(costUrl);
+  const pArr = getItemsArray<PurposeItem>(pJson);
+  const cArr = getItemsArray<CostCenterItem>(cJson);
 
-  const pArr = getItemsArray<{ Id: number; Title: string; IsActive: boolean }>(pJson);
-  const cArr = getItemsArray<
-    { Id: number; Title: string; IsActive: boolean; Department?: { Id: number; Title: string } } &
-    Record<string, unknown>
-  >(cJson);
-
-  const pList: PurposeOption[] = pArr.map((x) => ({ Id: x.Id, Title: x.Title }));
+  const pList: PurposeOption[] = pArr.map((x) => ({
+    Id: x.Id,
+    Title: x.Title,
+  }));
 
   const cList: CostCenterOption[] = cArr.map((x) => ({
     Id: x.Id,
     Title: x.Title,
     CostCenterCode: String(x[costCenterInternalName] ?? ""),
-    // Department added (will compile only if CostCenterOption includes it)
-    Department: x.Department ? { Id: x.Department.Id, Title: x.Department.Title } : undefined,
+    Department: x.Department
+      ? { Id: x.Department.Id, Title: x.Department.Title }
+      : undefined,
   }));
-  logger.log(cList);
+
   setPurposes(pList);
   setCostCenters(cList);
 };
@@ -823,15 +797,21 @@ const parseMonthlySequenceFromTitle = (
   const tx = String(title || "").trim();
   if (!tx) return 0;
 
-  // Format: II202603/0001
-  // ✅ Static regex — capture YYYYMM and sequence separately to avoid dynamic RegExp construction
-  const match = /^II(\d{6})\/(\d{4})$/i.exec(tx);
-  if (!match) return 0;
+  // ✅ New 3-segment format: II202604/1162/0360
+  const matchNew = /^II(\d{6})\/\d+\/(\d{4})$/i.exec(tx);
+  if (matchNew) {
+    if (matchNew[1] !== ym) return 0;
+    return Number(matchNew[2]);
+  }
 
-  // ✅ Validate the captured YM group matches the expected value
-  if (match[1] !== ym) return 0;
+  // ✅ Legacy 2-segment fallback: II202604/0360
+  const matchOld = /^II(\d{6})\/(\d{4})$/i.exec(tx);
+  if (matchOld) {
+    if (matchOld[1] !== ym) return 0;
+    return Number(matchOld[2]);
+  }
 
-  return Number(match[2]);
+  return 0;
 };
 /* =========================================================
    OData helpers
@@ -914,16 +894,22 @@ export const getNextMonthlyTxnSequence = async (
 export const makeTxnId = (
   runningNo: number,
   mode: "submitted" | "draft" | "ExcelUpload" = "submitted",
-  asOf: Date = new Date()
+  asOf: Date = new Date(),
+  spItemId?: number   // ✅ NEW — SharePoint item Id
 ): string => {
   const { ym } = getTxnDateParts(asOf);
   const seq4 = to4Digits(runningNo);
 
-  // ✅ Fixed: was (mode === "draft" || "ExcelUpload") — always true
   if (mode === "draft" || mode === "ExcelUpload") {
     return seq4;
   }
 
+  // ✅ Submitted format: II{YYYYMM}/{SP_ID}/{SEQ}
+  if (spItemId && spItemId > 0) {
+    return `II${ym}/${spItemId}/${seq4}`;
+  }
+
+  // Fallback (shouldn't happen for submitted, but safe)
   return `II${ym}/${seq4}`;
 };
 

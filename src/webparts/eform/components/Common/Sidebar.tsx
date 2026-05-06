@@ -71,7 +71,8 @@ export default function Sidebar({
 
   const itemBase = "relative w-full text-left transition-colors";
   const activeItem = "font-semibold text-gray-900 bg-transparent";
-  const normalItem = "text-gray-700 hover:bg-black/0";
+  const normalItem = "text-[#3C3C3C] hover:bg-[#F6F6F6] hover:text-[#222222] hover:font-bold";
+
 
   const isActive = (r: Route): boolean => activeRoute === r;
   const isMySectionActive =
@@ -104,11 +105,12 @@ export default function Sidebar({
       <button
         type="button"
         onClick={() => onNavigate(route)}
-        className={[itemBase, "pl-5 pr-3 py-3", active ? activeItem : normalItem].join(" ")}
+        className={[itemBase, "pl-5 pr-3 py-1.5 rounded-md", active ? activeItem : normalItem].join(" ")}
         title={label}
       >
         {showActiveBar && active && !collapsed && (
-          <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r bg-[#E60023]" />
+          <span className="absolute left-0 top-1 bottom-1 w-[3px] bg-[#E60023]" />
+
         )}
 
         <div className="flex items-center gap-3">
@@ -163,9 +165,12 @@ export default function Sidebar({
                 <div className="text-[11px] font-semibold text-gray-900">Current location</div>
                 <span
                   className={[
-                    "shrink-0 h-6 w-6 rounded-full bg-red-50 flex items-center justify-center text-[#E60023] transition-transform",
+                    "shrink-0 h-5 w-5 rounded-full bg-[#FBE9EA] flex items-center justify-center text-[#E60023] transition-all cursor-pointer",
                     locationExpanded ? "rotate-180" : "",
                   ].join(" ")}
+                  style={{ pointerEvents: "all" }}
+                  onMouseOver={(e) => { e.currentTarget.style.backgroundColor = "#E8E8E8"; }}
+                  onMouseOut={(e) => { e.currentTarget.style.backgroundColor = "#FBE9EA"; }}
                 >
                   <IconChevronDown />
                 </span>

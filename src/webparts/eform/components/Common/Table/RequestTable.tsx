@@ -14,7 +14,7 @@ type Props<T> = {
 
   selectedIds?: RowId[];              // ✅ ARRAY
   onToggleRow?: (id: RowId) => void;  // ✅
-  onToggleAll?: () => void; 
+  onToggleAll?: () => void;
 
   // pagination
   pageIndex: number;
@@ -54,17 +54,17 @@ export default function RequestTable<T extends BaseRow>({
           rows={rows}
           minWidthClass="min-w-[1200px]"
           tableBreakpoint={1024}
-           selectedIds={selectedIds}
-  onToggleRow={(id: RowId) =>
-    setSelectedIds(prev =>
-      prev.indexOf(id) ? prev.filter(x => x !== id) : [...prev, id]
-    )
-  }
-  onToggleAll={() =>
-    setSelectedIds(
-      selectedIds.length === rows.length ? [] : rows.map(r => r.id)
-    )
-  }
+          selectedIds={selectedIds}
+          onToggleRow={(id: RowId) =>
+            setSelectedIds(prev =>
+              prev.indexOf(id) ? prev.filter(x => x !== id) : [...prev, id]
+            )
+          }
+          onToggleAll={() =>
+            setSelectedIds(
+              selectedIds.length === rows.length ? [] : rows.map(r => r.id)
+            )
+          }
         />
       </div>
 
@@ -73,7 +73,8 @@ export default function RequestTable<T extends BaseRow>({
         <button
           onClick={onFirst}
           disabled={pageIndex === 0}
-          className="h-8 px-3 rounded-md bg-[#e6e6e6] text-gray-700 disabled:opacity-50"
+          className="h-8 px-3 rounded-md bg-[#D9D9D9] text-gray-700 disabled:opacity-50"
+
         >
           First
         </button>
@@ -81,7 +82,8 @@ export default function RequestTable<T extends BaseRow>({
         <button
           onClick={onPrev}
           disabled={pageIndex === 0}
-          className="h-8 px-3 rounded-md bg-[#e6e6e6] text-gray-700 disabled:opacity-50"
+          className="h-8 px-3 rounded-md bg-[#D9D9D9] text-gray-700 disabled:opacity-50"
+
         >
           Previous
         </button>
@@ -93,7 +95,8 @@ export default function RequestTable<T extends BaseRow>({
         <button
           onClick={onNext}
           disabled={pageIndex >= totalPages - 1}
-          className="h-8 px-3 rounded-md bg-[#e6e6e6] text-gray-700 disabled:opacity-50"
+          className="h-8 px-3 rounded-md bg-[#D9D9D9] text-gray-700 disabled:opacity-50"
+
         >
           Next
         </button>
@@ -101,7 +104,8 @@ export default function RequestTable<T extends BaseRow>({
         <button
           onClick={onLast}
           disabled={pageIndex >= totalPages - 1}
-          className="h-8 px-3 rounded-md bg-[#e6e6e6] text-gray-700 disabled:opacity-50"
+          className="h-8 px-3 rounded-md bg-[#D9D9D9] text-gray-700 disabled:opacity-50"
+
         >
           Last
         </button>

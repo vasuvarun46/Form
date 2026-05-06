@@ -449,7 +449,7 @@ export default function CreateRequestPage({
 
       const flow: FlowItemResponse | undefined =
         normalizeFlowToRow(json);
-      console.log(flow);
+
 
       // ❌ SKU NOT FOUND (invalid response OR missing ProductCode)
       if (!flow || !flow.Barcode || String(flow.Barcode).trim() === "") {
@@ -655,6 +655,18 @@ export default function CreateRequestPage({
 
     return allItems;
   };
+  const isoToLocalYyyyMmDd = (iso: string | undefined): string => {
+    if (!iso) return "";
+    const d = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Bangkok",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(iso));
+    return d; // Returns "YYYY-MM-DD" in Bangkok time
+  };
+
+
   const draftLoadedRef = React.useRef<number | null>(null);
   React.useEffect(() => {
     let isCancelled = false;
@@ -687,9 +699,8 @@ export default function CreateRequestPage({
         setUsage({
           purpose: header.Purpose?.Title || "",
           costCenter: header.CostCenter?.Title || "",
-          expectedDelivery: header.ExpectedDeliveryDate
-            ? header.ExpectedDeliveryDate.substring(0, 10)
-            : "",
+          expectedDelivery: isoToLocalYyyyMmDd(header.ExpectedDeliveryDate), // ✅ Bangkok date
+
           placeOfDelivery: header.PlaceOfDelivery || "",
           purposeDetail: header.PurposeDetails || "",
         });
@@ -766,8 +777,7 @@ export default function CreateRequestPage({
     };
   }, [draftId, context]);
 
-  console.log("usage", usage)
-  console.log("Table", items)
+
 
   React.useEffect(() => {
     if (!isEditDraftMode) {
@@ -781,32 +791,41 @@ export default function CreateRequestPage({
   }, [isEditDraftMode, draftLoading, currentDraftSnapshot]);
 
   const initRef = React.useRef(false);
-  React.useEffect(() => {
-    let isCancelled = false;
-    const run = async (): Promise<void> => {
-      try {
-        if (isCancelled) return;
-        if (!initRef.current) {
-          initRef.current = true;
-          const [u] = await Promise.all([
-            getUserDataFromSharePoint(context),
-            loadMasters(context, setPurposes, setCostCenters),
-          ]);
-          if (isCancelled) return;
-          console.log(u)
-          setUserData(u);
-        }
-      } catch (e: unknown) {
-        console.error("CreateRequestPage -> initial fetch error:", e);
-      }
-    };
-    run().catch((e: unknown) => {
-      console.error("CreateRequestPage -> initial fetch run() failed:", e);
-    });
-    return () => {
-      isCancelled = true;
-    };
-  }, [context]);
+
+React.useEffect(() => {
+  let isCancelled = false;
+
+  const run = async (): Promise<void> => {
+    if (initRef.current) return;
+    initRef.current = true;
+
+    try {
+      // STEP 1: Fetch user data ONCE
+      const u = await getUserDataFromSharePoint(context);
+      if (isCancelled) return;
+
+      setUserData(u);
+
+      // STEP 2: Extract deptId from the result we already have
+      const deptId = u?.[0]?.Department?.Id ?? null;
+
+      // STEP 3: Fetch both masters in parallel using the deptId we already know
+      // No redundant getUserDataFromSharePoint call inside loadMastersForDept
+      await loadMasters(context, deptId, setPurposes, setCostCenters);
+
+    } catch (e: unknown) {
+      console.error("CreateRequestPage -> initial fetch error:", e);
+    }
+  };
+
+  run().catch((e: unknown) => {
+    console.error("CreateRequestPage -> initial fetch run() failed:", e);
+  });
+
+  return () => {
+    isCancelled = true;
+  };
+}, [context]); // context is stable — this only fires once per mount
   const inventoryModeInitRef = React.useRef(false);
   React.useEffect(() => {
     // ✅ skip first run (when draft load sets inventoryMode)
@@ -848,14 +867,18 @@ export default function CreateRequestPage({
         return code;
     }
   };
+  // ✅ NEW — only fires when crossing the 500K threshold (false → true)
+  const prevOverLimitRef = React.useRef<boolean>(false);
   React.useEffect(() => {
-    if (totalAmount > 500000) {
+    const isOverLimit = totalAmount > 500000;
+    if (isOverLimit && !prevOverLimitRef.current) {
       setErrorTitle("Something went wrong");
       setErrorMessage(
         `Total request amount (${totalAmount.toLocaleString()} THB) exceeds the 500,000 THB limit.`
       );
       setErrorOpen(true);
     }
+    prevOverLimitRef.current = isOverLimit;
   }, [totalAmount]);
   React.useEffect(() => {
     if (!draftId) {
@@ -956,23 +979,42 @@ export default function CreateRequestPage({
 
 
   const upsertDraftHeaderAndItems = async (
-  requestId: number,
-  headerBody: Record<string, unknown>,
-  fetchLiveStock: boolean = false  // ✅ NEW: true only when called from handleSubmit
-): Promise<void> => {
-
+    requestId: number,
+    headerBody: Record<string, unknown>,
+    fetchLiveStock: boolean = false
+  ): Promise<void> => {
     // 1) Update header only
     await spUpdateItem(context, "InventoryRequests", requestId, headerBody);
-    // 2) Upsert item rows by SKU for the same RequestID.
-    const siteUrl = context.pageContext.web.absoluteUrl;
-    const itemsUrl =
-      `${siteUrl}/_api/web/lists/getbytitle('InventoryRequestItems')/items` +
-      `?$select=Id,RequestIDId,RowStatus,SKUCode,StockAvailability&$filter=RequestIDId eq ${requestId}&$orderby=Id asc`;
-    const itemsJson = await context.spHttpClient.get(itemsUrl, SPHttpClient.configurations.v1);
-    const existingItems = (await itemsJson.json()) as SPListResponse<InventoryRequestItemRow>;
-    const existingRows: InventoryRequestItemRow[] = existingItems.value || [];
 
-    const normalizeSku = (value?: string): string => String(value || "").trim().toUpperCase();
+    // 2) Fetch ALL existing item rows for this request — paginate to avoid 100-row cap
+    const siteUrl = context.pageContext.web.absoluteUrl;
+    const existingRows: InventoryRequestItemRow[] = [];
+
+    let nextUrl: string | null =
+      `${siteUrl}/_api/web/lists/getbytitle('InventoryRequestItems')/items` +
+      `?$select=Id,RequestIDId,RowStatus,SKUCode,StockAvailability` +
+      `&$filter=RequestIDId eq ${requestId}` +
+      `&$orderby=Id asc` +
+      `&$top=5000`;
+
+    while (nextUrl) {
+      const res = await context.spHttpClient.get(
+        nextUrl,
+        SPHttpClient.configurations.v1
+      );
+      const json = (await res.json()) as SPListResponse<InventoryRequestItemRow> & {
+        "@odata.nextLink"?: string;
+      };
+      if (json.value && json.value.length) {
+        existingRows.push(...json.value);
+      }
+      nextUrl = json["@odata.nextLink"] || null;
+    }
+
+    // ───── Everything below is unchanged ─────
+    const normalizeSku = (value?: string): string =>
+      String(value || "").trim().toUpperCase();
+
     const rowsBySku = new Map<string, InventoryRequestItemRow[]>();
     for (let i = 0; i < existingRows.length; i++) {
       const row = existingRows[i];
@@ -983,7 +1025,6 @@ export default function CreateRequestPage({
       rowsBySku.set(key, bucket);
     }
 
-    // Defensive dedupe: one SKU row per request payload.
     const requestedBySku = new Map<string, {
       skuRaw: string;
       productCode: string;
@@ -1028,40 +1069,41 @@ export default function CreateRequestPage({
       }
 
       const rowTotal: number = Number(reqItem.qty) * Number(reqItem.unitPrice);
-    // ✅ Preserve the original StockAvailability saved on first draft save
-const existingStockAvailability =
-  matchedRows.length > 0
-    ? Number((matchedRows[0] as any).StockAvailability ?? -1)
-    : -1;
+      const existingStockAvailability =
+        matchedRows.length > 0
+          ? Number((matchedRows[0] as any).StockAvailability ?? -1)
+          : -1;
 
-// Use the already-saved stock value if available; otherwise fall back to maxStock from UI state
-let liveStockForUpsert: number =
-  existingStockAvailability >= 0
-    ? existingStockAvailability
-    : Number(
-        items.find((x) => String(x.sku || "").trim().toUpperCase() === reqItem.skuRaw.toUpperCase())
-          ?.maxStock ?? reqItem.qty
-      );
+      let liveStockForUpsert: number =
+        existingStockAvailability >= 0
+          ? existingStockAvailability
+          : Number(
+            items.find(
+              (x) =>
+                String(x.sku || "").trim().toUpperCase() ===
+                reqItem.skuRaw.toUpperCase()
+            )?.maxStock ?? reqItem.qty
+          );
 
-const isSubmittingNow =
-  String(headerBody.WorkflowStatus || "") === "Submitted";
+      const isSubmittingNow =
+        String(headerBody.WorkflowStatus || "") === "Submitted";
 
-// Only re-fetch live stock at actual Submit time (not Draft saves)
-if (isSubmittingNow && flowUrl && inventoryMode === "manual") {
-  try {
-    const json = await fetchProductFromAws(
-      context.httpClient,
-      reqItem.skuRaw,
-      flowUrl
-    );
-    const flow = normalizeFlowToRow(json);
-    if (flow) {
-      liveStockForUpsert = Number(flow.Warehouse_SOH_Qty ?? 0);
-    }
-  } catch {
-    // keep existing value on failure
-  }
-}
+      if (isSubmittingNow && flowUrl && inventoryMode === "manual") {
+        try {
+          const json = await fetchProductFromAws(
+            context.httpClient,
+            reqItem.skuRaw,
+            flowUrl
+          );
+          const flow = normalizeFlowToRow(json);
+          if (flow) {
+            liveStockForUpsert = Number(flow.Warehouse_SOH_Qty ?? 0);
+          }
+        } catch {
+          // keep existing value on failure
+        }
+      }
+
       const itemBody: Record<string, unknown> = {
         Title: reqItem.skuRaw,
         LineNumber: i + 1,
@@ -1076,10 +1118,7 @@ if (isSubmittingNow && flowUrl && inventoryMode === "manual") {
         LookupSource: inventoryMode === "excel" ? "Excel" : "Manual",
         RowStatus: "Active",
         StockAvailability: liveStockForUpsert,
-
       };
-
-
 
       if (selectedRowId > 0) {
         keptRowIds.add(selectedRowId);
@@ -1111,7 +1150,9 @@ if (isSubmittingNow && flowUrl && inventoryMode === "manual") {
     const inactiveIds = Array.from(rowsToInactive.values());
     for (let i = 0; i < inactiveIds.length; i++) {
       deactivatePromises.push(
-        spUpdateItem(context, "InventoryRequestItems", inactiveIds[i], { RowStatus: "Inactive" })
+        spUpdateItem(context, "InventoryRequestItems", inactiveIds[i], {
+          RowStatus: "Inactive",
+        })
       );
     }
 
@@ -1122,10 +1163,29 @@ if (isSubmittingNow && flowUrl && inventoryMode === "manual") {
   // Add near the top with other refs
 
 
-  const runSubmitGuards = async (opts?: { allowExcelInsufficient?: boolean }): Promise<boolean> => {
+  const runSubmitGuards = async (
+    opts?: { allowExcelInsufficient?: boolean }
+  ): Promise<boolean> => {
     setSubmitError("");
     setInventoryModeError(false);
 
+    // ─────────────────────────────────────────────────────────────────
+    // FIX F1: Excel "Insufficient Stock" → OK was clicked.
+    // User has already acknowledged the warning and chose to proceed.
+    // Bypass ALL re-validation (validateForm + stock loop) and submit.
+    // This also kills the "Something went wrong" popup that was firing
+    // from validateForm on the re-submit attempt.
+    // ─────────────────────────────────────────────────────────────────
+    if (opts?.allowExcelInsufficient && inventoryMode === "excel") {
+      return true;
+    }
+
+    // FIX F2: Clear stale stock errors before re-validating manual mode.
+    // Without this, validateForm can detect the leftover itemErrors and
+    // trigger the generic popup even after the user corrected the qty.
+    if (inventoryMode === "manual") {
+      setItemErrors({});
+    }
 
     const vr: ValidationResult = validateForm(usage, items);
     if (!vr.ok) {
@@ -1143,7 +1203,6 @@ if (isSubmittingNow && flowUrl && inventoryMode === "manual") {
       if (items.length === 0) {
         setInventoryModeError(true);
       }
-
       return false;
     }
 
@@ -1152,6 +1211,7 @@ if (isSubmittingNow && flowUrl && inventoryMode === "manual") {
       return false;
     }
 
+    // Excel stock check (only runs when allowExcelInsufficient is NOT set)
     if (inventoryMode === "excel") {
       const skus = items.map((x) => String(x.sku || "").trim()).filter(Boolean);
       const insufficient: string[] = [];
@@ -1163,15 +1223,15 @@ if (isSubmittingNow && flowUrl && inventoryMode === "manual") {
           const flow = normalizeFlowToRow(json);
           const stock = Number(flow?.Warehouse_SOH_Qty ?? 0);
           const reqQty = Number(items.find((x) => x.sku === sku)?.qty || 0);
-          if (!flow || reqQty > stock) {
+          if (flow && reqQty > stock) {
             insufficient.push(sku);
           }
         } catch {
-          insufficient.push(sku);
+          // Excel was already validated at upload time — don't re-block on transient errors
         }
       }
 
-      if (insufficient.length > 0 && !opts?.allowExcelInsufficient) {
+      if (insufficient.length > 0) {
         setExcelFailPopupOpen(true);
         return false;
       }
@@ -1183,6 +1243,7 @@ if (isSubmittingNow && flowUrl && inventoryMode === "manual") {
       return false;
     }
 
+    // Manual mode live stock validation
     if (inventoryMode === "manual") {
       const nextItemErrors: ItemRowErrors = {};
       let hasManualStockIssue = false;
@@ -1190,7 +1251,6 @@ if (isSubmittingNow && flowUrl && inventoryMode === "manual") {
       for (let i = 0; i < items.length; i++) {
         const sku = String(items[i].sku || "").trim();
         const reqQty = Number(items[i].qty || 0);
-
         if (!sku) continue;
 
         try {
@@ -1368,7 +1428,7 @@ if (isSubmittingNow && flowUrl && inventoryMode === "manual") {
       setSubmitError(message);
     } finally {
       setIsSubmitting(false);
-      const ref = persistInFlightRef;  // ✅ avoids race condition lint warning
+      const ref = persistInFlightRef;
       ref.current = false;
     }
   };
@@ -1394,6 +1454,7 @@ if (isSubmittingNow && flowUrl && inventoryMode === "manual") {
     try {
       const canProceed = await runSubmitGuards(opts);
       if (!canProceed) return;
+
       const req: ISuparaItem | undefined = userData[0];
       const requesterEmail: string = context.pageContext.user.email;
       const purposeMatches: PurposeOption[] = purposes.filter((p) => p.Title === usage.purpose);
@@ -1412,9 +1473,8 @@ if (isSubmittingNow && flowUrl && inventoryMode === "manual") {
         ? await resolveUserIdByEmail(firstApproverEmail)
         : undefined;
 
-      const headerBody: Record<string, unknown> = {
-        Title: "TEMP",
-        RequestCreatedOn: nowIso,
+      // ✅ Shared approval fields — used in both paths
+      const approvalFields: Record<string, unknown> = {
         RequestSubmittedOn: nowIso,
         LastUpdatedOn: nowIso,
         PendingSince: nowIso,
@@ -1435,65 +1495,90 @@ if (isSubmittingNow && flowUrl && inventoryMode === "manual") {
         TotalQuantity: totalQty,
         TotalAmount: totalAmount,
         ApprovalAmountBucket: getApprovalAmountBucket(totalAmount),
-        WorkflowStatus: "Submitted",
-        WorkflowStage: chain.stageCount > 0 ? 1 : 0,  // ✅ use stageCount instead
+        WorkflowStage: chain.stageCount > 0 ? 1 : 0,
         ApprovalType: chain.approvalLabel,
         HasMultipleApprovals: chain.hasMultipleApprovals,
-        CurrentApproverId: firstApproverUserId || undefined,   // ✅ People column needs Id suffix
+        CurrentApproverId: firstApproverUserId || undefined,
         CurrentApproverEmail: firstApproverEmail || undefined,
-
         ApprovalChainJSON: chain.chainJSON,
         MultipleApproverData: chain.chainJSON,
         IsEditableByRequester: true,
         HasAttachments: inventoryMode === "excel",
         ExcelUploadFileName: inventoryMode === "excel" ? excelFileName : "",
-        ErrorFlag: false
+        ErrorFlag: false,
       };
 
+      // =========================================================
+      // PATH A: Draft → Submit
+      // ✅ Generate Transaction ID FIRST
+      // ✅ Inject real Title into header BEFORE writing Submitted
+      // ✅ PA receives correct Title on first Submitted write
+      // =========================================================
       if (draftId && Number(draftId) > 0) {
         const requestId = Number(draftId);
 
+        // ✅ STEP 1: Generate Transaction ID before anything is written as Submitted
+        const runningNo = await getNextMonthlyTxnSequence(context);
+        const formattedId = makeTxnId(runningNo, "submitted", new Date(), requestId);
+
+        // ✅ STEP 2: Build header with real Title + WorkflowStatus = Submitted together
+        const headerBody: Record<string, unknown> = {
+          ...approvalFields,
+          Title: formattedId,           // ✅ real ID — never TEMP
+          RequestNumber: requestId,
+          RequestCreatedOn: nowIso,
+          WorkflowStatus: "Submitted",  // ✅ set only after ID is ready
+        };
+
+        // ✅ STEP 3: Upsert — PA triggers here and always reads the correct Transaction ID
         await upsertDraftHeaderAndItems(requestId, headerBody, true);
 
-
-        const runningNo = await getNextMonthlyTxnSequence(context);
-        const formattedId = makeTxnId(runningNo, "submitted");
 
         await spUpdateItem(context, "InventoryRequests", requestId, {
           Title: formattedId,
           RequestNumber: requestId,
+          WorkflowStatus: "Submitted",
         });
 
         onSubmit();
         onNavigate("my", {
           toastType: "success",
-          toastMessage:
-            "Your request is submitted to the approver(s).",
+          toastMessage: "Your request is submitted to the approver(s).",
         });
 
         return;
       }
 
+      // =========================================================
+      // PATH B: New Record → Submit
+      // ✅ Create item with WorkflowStatus = "Pending" (PA does NOT trigger)
+      // ✅ Create all line items
+      // ✅ Generate Transaction ID
+      // ✅ Single final update sets real Title + WorkflowStatus = Submitted
+      // ✅ PA triggers ONLY on this final write — always reads correct Title
+      // =========================================================
+
+      // ✅ STEP 1: Create the SP record with WorkflowStatus = "Pending"
+      //           PA does NOT trigger on Pending — Title is irrelevant at this point
+      const pendingHeaderBody: Record<string, unknown> = {
+        ...approvalFields,
+        Title: "PENDING",              // placeholder — will be replaced before Submitted
+        RequestCreatedOn: nowIso,
+        WorkflowStatus: "Pending",     // ✅ PA does not fire on Pending
+      };
+
       const createdHeader = await spCreateItem(
         context,
         "InventoryRequests",
-        headerBody
+        pendingHeaderBody
       );
 
       const requestId: number = createdHeader.Id;
 
-      const runningNo = await getNextMonthlyTxnSequence(context);
-      const formattedId = makeTxnId(runningNo, "submitted");
-
-      await spUpdateItem(context, "InventoryRequests", requestId, {
-        Title: formattedId,
-        RequestNumber: requestId,
-      });
-
+      // ✅ STEP 2: Create all line items while status is still "Pending"
       const createItemPromises = items.map(async (it, idx) => {
         const rowTotal = Number(it.qty) * Number(it.unitPrice);
 
-        // ✅ Fetch live stock from API
         let liveStock: number = Number(it.maxStock ?? 0);
 
         if (flowUrl && inventoryMode === "manual") {
@@ -1503,14 +1588,11 @@ if (isSubmittingNow && flowUrl && inventoryMode === "manual") {
               String(it.sku || "").trim(),
               flowUrl
             );
-
             const flow = normalizeFlowToRow(json);
-
             if (flow) {
               liveStock = Number(flow.Warehouse_SOH_Qty ?? 0);
             }
           } catch {
-            // fallback
             liveStock = Number(it.maxStock ?? 0);
           }
         }
@@ -1526,37 +1608,41 @@ if (isSubmittingNow && flowUrl && inventoryMode === "manual") {
           Quantity: Number(it.qty),
           LineTotal: rowTotal,
           RequestIDId: requestId,
-          LookupSource:
-            inventoryMode === "excel" ? "Excel" : "Manual",
+          LookupSource: inventoryMode === "excel" ? "Excel" : "Manual",
           RowStatus: "Active",
-
-          // ✅ FIXED HERE
           StockAvailability: liveStock,
         };
 
-        return spCreateItem(
-          context,
-          "InventoryRequestItems",
-          itemBody
-        );
+        return spCreateItem(context, "InventoryRequestItems", itemBody);
       });
 
       await Promise.all(createItemPromises);
 
+      // ✅ STEP 3: Generate Transaction ID now that we have the real SP item Id
+      const runningNo = await getNextMonthlyTxnSequence(context);
+      const formattedId = makeTxnId(runningNo, "submitted", new Date(), requestId);
+
+      // ✅ STEP 4: Single write — sets real Title + WorkflowStatus = Submitted together
+      //           PA triggers HERE for the first time and reads the correct Transaction ID
+      await spUpdateItem(context, "InventoryRequests", requestId, {
+        Title: formattedId,
+        RequestNumber: requestId,
+        WorkflowStatus: "Submitted",   // ✅ PA fires here — Title is already the real ID
+      });
+
       onSubmit();
       onNavigate("my", {
         toastType: "success",
-        toastMessage:
-          "Your request is submitted to the approver(s).",
+        toastMessage: "Your request is submitted to the approver(s).",
       });
+
     } catch (e: unknown) {
       console.error(e);
-      const message =
-        e instanceof Error ? e.message : "Submit failed.";
+      const message = e instanceof Error ? e.message : "Submit failed.";
       setSubmitError(message);
     } finally {
       setIsSubmitting(false);
-      const ref = persistInFlightRef;  // ✅ avoids race condition lint warning
+      const ref = persistInFlightRef;
       ref.current = false;
     }
   };
@@ -1764,7 +1850,18 @@ if (isSubmittingNow && flowUrl && inventoryMode === "manual") {
       excelFailPopupOpen={excelFailPopupOpen}
       setExcelFailPopupOpen={setExcelFailPopupOpen}
       manualStockPopupOpen={manualStockPopupOpen}
-      closeManualStockPopup={() => setManualStockPopupOpen(false)}
+      // In CreateRequestPage.tsx — replace the existing prop
+      closeManualStockPopup={() => {
+        setManualStockPopupOpen(false);
+        // Defer scroll to allow popup to unmount and DOM to settle
+        setTimeout(() => {
+          const firstErrorRow =
+            document.querySelector<HTMLTableRowElement>('tr[data-row-error="true"]');
+          if (firstErrorRow) {
+            firstErrorRow.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        }, 50);
+      }}
       setItems={setItems}
       setPendingMode={setPendingMode}
       onExcelFailOk={() => {

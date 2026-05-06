@@ -176,6 +176,7 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
     submitDecision,
     reload,
     rows,
+    countIncreased,
   } = useTeamRequestsLogic(ctx, props.ApprovalFlowUrl, searchField, props.permissions, props.productFlowUrl);
 
   React.useEffect(() => {
@@ -328,8 +329,8 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
     {
       key: "id",
       header: "Transaction<br/>ID",
-      thClassName: "w-[9%]",
-      tdClassName: "w-[9%] truncate",
+      thClassName: "w-[12%]",
+      tdClassName: "w-[12%] truncate",
       render: (r: Row) =>
         r.id === "-" ? (
           <span className="text-gray-400"></span>
@@ -358,7 +359,7 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
         <CellText value={r.requestor === "-" ? "" : r.requestor} maxWidth="max-w-full" />
       ),
     },
-    
+
     {
       key: "approverNames",
       header: "Approver<br/>Names",
@@ -738,7 +739,8 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
                   />
                   <div className="text-[13px] font-semibold text-gray-900">Request lists</div>
 
-                  <div className={`${card} overflow-hidden`}>
+
+                  <div key={String(countIncreased)} className={`${card} overflow-hidden`}>
                     <div className="px-4 py-3 flex items-center justify-between border-b border-[#eeeeee]">
                       <RequestSearchBar
                         searchDraft={searchDraft}

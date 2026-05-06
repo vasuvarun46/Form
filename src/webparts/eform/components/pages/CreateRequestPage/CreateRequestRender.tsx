@@ -245,7 +245,6 @@ export default function CreateRequestRender(props: Props): JSX.Element {
     // excelUploadedAt,
     setExcelUploadedAt,
     onSelectExcelFile,
-    onRunExcelUploadAndValidate,
     customErrorOpen,
     customErrorMessage,
     setCustomErrorOpen,
@@ -269,14 +268,15 @@ export default function CreateRequestRender(props: Props): JSX.Element {
 
   const [removeFileConfirmOpen, setRemoveFileConfirmOpen] = React.useState(false);
   const isDownloadingTemplateRef = React.useRef(false);
+  const [searchBarHovered, setSearchBarHovered] = React.useState(false);
   const productTableRef = React.useRef<HTMLTableElement>(null);
-  const [fp, setFp] = React.useState<{qL:number;qW:number;tL:number;tW:number}|null>(null);
-    React.useEffect(() => {
+  const [fp, setFp] = React.useState<{ qL: number; qW: number; tL: number; tW: number } | null>(null);
+  React.useEffect(() => {
     const u = () => {
       const t = productTableRef.current; if (!t) return; const h = t.querySelectorAll("thead tr th"); if (!h.length) return; const n = h.length; const qi = n >= 10 ? 7 : 6; const ti = n >= 10 ? 8 : 7; const q = h[qi].getBoundingClientRect(); const r = h[ti].getBoundingClientRect(); setFp(prev => {
         const next = { qL: q.left, qW: q.width, tL: r.left, tW: r.width };
         if (prev && prev.qL === next.qL && prev.qW === next.qW &&
-          prev.tL === next.tL && prev.tW === next.tW) return prev; 
+          prev.tL === next.tL && prev.tW === next.tW) return prev;
         return next;
       });
     };
@@ -443,7 +443,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                   {/* Buttons */}
                   <div className="flex items-center justify-center gap-3">
                     <button
-                      className="h-10 px-6 rounded-lg bg-gray-100 text-gray-700 text-[13px] font-medium hover:bg-gray-200"
+                      className="h-10 px-6 rounded-lg bg-[#EBEBEB] text-gray-700 text-[13px] font-medium hover:bg-[#EBEBEB]"
                       onClick={() => {
                         setModeChangeConfirmOpen(false);
                         setPendingMode("");
@@ -453,7 +453,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                     </button>
 
                     <button
-                      className="h-10 px-6 rounded-lg bg-black text-white text-[13px] font-semibold whitespace-nowrap hover:opacity-90"
+                      className="h-10 px-6 rounded-lg bg-black text-white text-[13px] font-semibold whitespace-nowrap hover:bg-[#3B3B3B]"
                       onClick={() => {
                         setModeChangeConfirmOpen(false);
                         if (pendingMode) {
@@ -492,12 +492,8 @@ export default function CreateRequestRender(props: Props): JSX.Element {
           <section className={`${card} p-4 sm:p-5`} >
             <div className="flex items-center gap-4 mb-4">
               <h2
-                className={[
-                  "text-[13px] font-semibold whitespace-nowrap transition",
-                  mandatoryCompleted
-                    ? "text-gray-900"
-                    : "text-gray-500"
-                ].join(" ")}
+                className="text-[13px] font-bold whitespace-nowrap text-gray-900"
+
               >
                 Inventory Detail
               </h2>
@@ -505,12 +501,18 @@ export default function CreateRequestRender(props: Props): JSX.Element {
               {inventoryModeError || !mandatoryCompleted && (
                 <div className="
       flex items-center gap-2
-      rounded-md border border-yellow-400
-      bg-yellow-50 px-3 py-1
-      text-[11px] text-yellow-800
+      rounded-md border border-[#F5D36E]
+      bg-[#FFF1B9] px-3 py-1
+      text-[11px] text-[#3E3C35]
       whitespace-nowrap
     ">
-                  ⚠️ Please complete all required fields above to select how to add a product.
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink-0">
+                    <circle cx="12" cy="12" r="10" stroke="#3E3C35" strokeWidth="2" fill="none" />
+                    <line x1="12" y1="8" x2="12" y2="13" stroke="#3E3C35" strokeWidth="2" strokeLinecap="round" />
+                    <circle cx="12" cy="16.5" r="1.2" fill="#3E3C35" />
+                  </svg>
+                  Please complete all required fields above to select how to add a product.
+
                 </div>
               )}
             </div>
@@ -538,7 +540,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                   <>
                     To add multiple products by uploading Excel Template.{" "}
                     <span
-                      className="text-blue-600 cursor-pointer underline"
+                      className="text-[#6099E3] cursor-pointer underline"
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -586,7 +588,8 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                 />
 
                 <div className="flex items-center justify-between">
-                  <div className="text-[12px] font-semibold text-gray-900">Product</div>
+                  <div className="text-[12px] font-bold text-gray-900">Product</div>
+
 
                   {selectedExcelFile ? (
                     <div className="flex items-center gap-2">
@@ -594,7 +597,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                         type="button"
                         onClick={() => setRemoveFileConfirmOpen(true)}
 
-                        className="h-8 px-4 rounded-md border border-red-400 text-red-600 text-[12px] font-semibold hover:bg-red-50"
+                        className="h-8 px-4 rounded-md border border-[#DA2128] bg-[#FBE9EA] text-[#DA2128] text-[12px] font-semibold hover:bg-[#DA2128] hover:text-white"
                       >
                         Remove file
                       </button>
@@ -607,7 +610,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                         }}
                         className={[
                           "h-8 px-4 rounded-md text-[12px] font-semibold",
-                          "bg-black text-white hover:opacity-90",
+                          "bg-[#000000] text-white hover:bg-[#3B3B3B]",
                         ].join(" ")}
                       >
                         Upload file
@@ -617,7 +620,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="h-8 px-4 rounded-md bg-[#0a66d8] text-white text-[12px] font-semibold hover:bg-[#095ec7]"
+                      className="h-9 px-5 rounded-md border-[1.5px] border-[#478AE0] bg-[#2172DA] text-white text-[12px] font-bold hover:bg-[#F0F7FF] hover:text-[#2172DA]"
                     >
                       Select file
                     </button>
@@ -649,7 +652,8 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                 <button
                   type="button"
                   onClick={openExcelHelp}
-                  className="mt-2 text-[11px] text-blue-600 hover:underline"
+                  className="mt-2 text-[11px] text-[#6099E3] hover:underline"
+
                 >
                   See how to upload the Excel file successfully
                 </button>
@@ -676,7 +680,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
 
 
                 {excelErrors.length > 0 && (
-                  <div className="mt-2 text-[11px] text-red-700 space-y-1">
+                  <div className="mt-2 text-[11px] text-[#E56D71] space-y-1">
                     {excelErrors.map((x, i) => (
                       <div key={i}>• {x}</div>
                     ))}
@@ -686,14 +690,23 @@ export default function CreateRequestRender(props: Props): JSX.Element {
             )}
             {inventoryMode === "manual" && (
               <>
-                <div className="text-[13px] font-semibold text-gray-900 mb-4">Product</div>
+                <div className="text-[13px] font-bold text-gray-900 mb-4">Product</div>
+
 
                 {/* ✅ Search bar */}
                 <div className="w-[560px] max-w-full">
-                  <div className="h-10 w-full flex items-stretch overflow-hidden rounded-md border border-[#e6e6e6] bg-white">
-                    <div className="relative flex-1">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
-                        <IconSearch />
+                  <div className={["h-10 w-full flex items-stretch overflow-hidden rounded-md border-2 bg-white transition-colors",
+                    searchSku
+                      ? "border-[#76A8E8]"
+                      : searchBarHovered
+                        ? "border-[#76A8E8]"
+                        : "border-[#e6e6e6]",
+                  ].join(" ")}>
+                    <div className="relative flex-1"
+                      onMouseEnter={() => setSearchBarHovered(true)}
+                      onMouseLeave={() => setSearchBarHovered(false)}>
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#B1B1B1]">
+                        <IconSearch className="h-5 w-5" />
                       </span>
 
                       <input
@@ -715,8 +728,24 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                             handleManualSkuSearch().catch(() => undefined);
                           }
                         }}
-                        className="h-full w-full bg-transparent pl-9 pr-3 text-[12px] text-gray-700 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#2563eb] focus-visible:outline-offset-2"
+                        className="h-full w-full bg-transparent pl-9 pr-8 text-[12px] text-[#7A7A7A] font-bold outline-none placeholder:text-[#8B8B8B] placeholder:font-normal"
                       />
+                      {searchSku && !isSearchingSku && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSearchSku("");
+                            setSkuSearchError("");
+                          }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded-full bg-[#FFFFFF] hover:bg-[#F6F6F6] text-[#B1B1B1]"
+                          aria-label="Clear search"
+                        >
+                          <svg className="w-4 h-5" viewBox="0 0 12 12" fill="none">
+                            <path d="M2 2L10 10M10 2L2 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                          </svg>
+                        </button>
+                      )}
+
                     </div>
 
                     <button
@@ -724,7 +753,12 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                       disabled={isSearchingSku}
                       onClick={() => handleManualSkuSearch().catch(() => undefined)}
                       className={[
-                        "h-full px-6 bg-[#0a66d8] text-white text-[12px] font-semibold hover:bg-[#095ec7] border-l border-[#0a66d8]",
+                        "h-full px-6 text-[12px] font-semibold border-l-2 transition-colors",
+                        searchBarHovered
+                          ? "bg-[#F0F7FF] text-[#2172DA] border-[#76A8E8]"
+                          : searchSku
+                            ? "bg-[#2172DA] text-white border-[#76A8E8]"
+                            : "bg-[#2172DA] text-white border-transparent",
                         isSearchingSku ? "opacity-60 cursor-not-allowed" : "",
                       ].join(" ")}
                     >
@@ -733,9 +767,15 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                   </div>
 
                   {skuSearchError && (
-                    <div className="mt-3 w-[560px] max-w-full rounded-md border border-[#e6e6e6] bg-[#f5f5f5] px-4 py-3">
-                      <div className="text-[12px] text-gray-700">
-                        {skuSearchError}
+                    <div className="relative w-full">
+                      <div className="absolute left-0 top-0 z-30 w-full min-h-[70px] rounded-b-md border border-t-0 border-[#e7e7e7] bg-[#F8F8F8] shadow-md px-4 py-5 flex items-center">
+                        <span className="text-[12px] text-[#7A7A7A]">
+                          {skuSearchError.split(/(".*?")/).map((part, i) =>
+                            part.startsWith('"') && part.endsWith('"')
+                              ? <span key={i} className="font-bold">{part}</span>
+                              : part
+                          )}
+                        </span>
                       </div>
                     </div>
                   )}
@@ -749,28 +789,29 @@ export default function CreateRequestRender(props: Props): JSX.Element {
             {/* ✅ Manual Add Popup */}
             {inventoryMode === "manual" && manualPopupOpen && manualProduct && (
               <div className="relative h-0 w-[560px] max-w-full">
-                <div className="absolute left-0 top-2 z-20 w-full overflow-hidden rounded-md border border-[#e7e7e7] bg-[#f5f6f8] shadow-sm">
-                  <div className="bg-[#f5f6f8] px-4 pt-3 pb-4">
+                <div className="absolute left-0 top-2 z-20 w-full overflow-hidden rounded-md border border-[#e7e7e7] bg-[#F8F8F8] shadow-sm">
+                  <div className="bg-[#F8F8F8] px-4 pt-3 pb-4">
                     <table className="w-full text-[12px]">
-                      <thead className="bg-[#f5f6f8] text-gray-700">
+                      <thead className="bg-[#F8F8F8] text-gray-700">
                         <tr>
                           <th className="text-left text-black font-bold py-2">SKU</th>
                           <th className="text-center text-black font-bold py-2">In Stock</th>
                           <th className="text-center text-black font-bold py-2">
-                            <span className="text-[#E60023] ">*</span> Request Quantity
+                            <span className="text-[#E56D71] ">*</span> Request Quantity
+
                           </th>
                         </tr>
                       </thead>
                       <tbody>
-                        <tr className="border-t border-[#e6e6e6] bg-[#f5f6f8]">
-                          <td className="py-3 text-gray-800 bg-[#f5f6f8]">{String(manualProduct.Barcode || "-")}</td>
+                        <tr className="border-t border-[#e6e6e6]" style={{ backgroundColor: "#F8F8F8" }}>
+                          <td className="py-3 text-gray-800" style={{ backgroundColor: "#F8F8F8" }}>{String(manualProduct.Barcode || "-")}</td>
 
-                          <td className="py-3 text-center bg-[#f5f6f8] text-gray-800">
+                          <td className="py-3 text-center text-gray-800" style={{ backgroundColor: "#F8F8F8" }}>
                             {Number(manualProduct.Warehouse_SOH_Qty ?? 0)}
                           </td>
 
-                          <td className="py-3 bg-[#f5f6f8]">
-                            <div className="mx-auto flex w-[120px] flex-col items-start bg-[#f5f6f8]">
+                          <td className="py-3" style={{ backgroundColor: "#F8F8F8" }}>
+                            <div className="mx-auto flex w-[120px] flex-col items-start bg-[#F8F8F8]">
                               <QtyStepper
                                 value={manualQty}
                                 onDec={() => {
@@ -789,10 +830,12 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                                   setManualQtyError(getManualQtyError(next, manualMaxStock));
                                 }}
                                 emptyValue={0}
+                                maxStock={manualMaxStock}
                               />
 
                               {manualQtyError && (
-                                <div className="mt-2 w-[170px] max-w-none text-left text-[9px] leading-[1.35] text-red-600 whitespace-pre-line">
+                                <div className="mt-2 w-[170px] max-w-none text-left text-[9px] leading-[1.35] text-[#E56D71] whitespace-pre-line">
+
                                   {manualQtyError}
                                 </div>
                               )}
@@ -813,7 +856,8 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                           setManualQty(1);
                           setManualQtyError("");
                         }}
-                        className="h-8 min-w-[88px] rounded-md bg-[#f2f2f2] px-4 text-[12px] font-semibold text-gray-700 hover:bg-[#e9e9e9]"
+                        className="h-8 min-w-[88px] rounded-md bg-[#E8E8E8] px-4 text-[12px] font-semibold text-[#222222] hover:bg-[#EBEBEB]"
+
                       >
                         Cancel
                       </button>
@@ -835,7 +879,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                             manualQty > 999 ||
                             manualQty > manualMaxStock ||
                             !!manualQtyError
-                            ? "bg-[#d9d9d9] text-white cursor-not-allowed"
+                            ? "bg-[#d9d9d9] text-[#888888] cursor-not-allowed"
                             : "bg-black text-white hover:bg-[#1f1f1f]",
                         ].join(" ")}
                       >
@@ -847,13 +891,15 @@ export default function CreateRequestRender(props: Props): JSX.Element {
               </div>
             )}
 
+
             {!isProcessing &&
               items.length === 0 &&
               (inventoryMode === "" || inventoryMode === "manual") && (
                 <div>
                   {/* ✅ Product header shown above empty state */}
                   {inventoryMode === "" && (
-                    <div className="text-[13px] font-semibold text-gray-900 mb-4">Product</div>
+                    <div className="text-[13px] font-bold text-gray-900 mb-4">Product</div>
+
                   )}
                   <div className="flex flex-col items-center justify-center py-16 text-center">
                     <div className="mb-4 flex justify-center">
@@ -866,11 +912,13 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                     </div>
 
 
-                    <div className="text-sm font-semibold text-gray-900">
+                    <div className="text-sm font-bold text-gray-900">
+
                       No products added in this request
                     </div>
 
-                    <div className="mt-1 text-xs text-gray-500 max-w-md">
+                    <div className="mt-1 text-sm font-semibold text-[#8C8C8C] max-w-md">
+
                       The request must contain at least one SKU with requested quantity to
                       Save as Draft or Submit.
                     </div>
@@ -905,7 +953,12 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                       const rowTotal: number = Number(it.qty) * Number(it.unitPrice);
                       const rowErr: string | undefined = itemErrors[idx];
                       return (
-                        <tr key={`${it.sku}-${idx}`} className={inventoryMode === "manual" && rowErr ? "bg-red-50" : ""}>
+                        // AFTER
+                        <tr
+                          key={`${it.sku}-${idx}`}
+                          data-row-error={inventoryMode === "manual" && rowErr ? "true" : undefined}
+                          className={inventoryMode === "manual" && rowErr ? "bg-red-50" : ""}
+                        >
                           <Td>{it.no}</Td>
                           <Td>
                             <span className="block truncate" title={it.sku}>{it.sku}</span>
@@ -929,7 +982,8 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                               />
                             </div>
                             {rowErr && (
-                              <div className="mt-1 mx-auto w-[136px] text-[11px] leading-[1.25] text-red-600 text-left whitespace-normal break-words">
+                              <div className="mt-1 mx-auto w-[136px] text-[11px] leading-[1.25] text-[#E56D71] text-left whitespace-normal break-words">
+
                                 {rowErr}
                               </div>
                             )}
@@ -965,7 +1019,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                                 )}
                               </button>
                               {rowErr && (
-                                <div className="hidden mt-1 text-[10px] text-red-700 whitespace-nowrap">
+                                <div className="hidden mt-1 text-[10px] text-[#E56D71] whitespace-nowrap">
                                   {rowErr}
                                 </div>
                               )}
@@ -1163,7 +1217,8 @@ export default function CreateRequestRender(props: Props): JSX.Element {
               <button
                 type="button"
                 onClick={closeErrorDialog}
-                className="h-10 px-8 rounded-md bg-black text-white text-[12px] font-semibold hover:opacity-90"
+                className="h-10 px-8 rounded-md bg-[#000000] text-white text-[12px] font-semibold hover:bg-[#222222]"
+
               >
                 OK, Got it
               </button>
@@ -1209,7 +1264,8 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                   <button
                     type="button"
                     onClick={() => setRemoveFileConfirmOpen(false)}
-                    className="h-11 min-w-[110px] rounded-[8px] bg-[#ececec] px-6 text-[14px] font-medium text-[#2f2f2f] hover:bg-[#e2e2e2]"
+                    className="h-11 min-w-[110px] rounded-[8px] bg-[#E8E8E8] px-6 text-[14px] font-medium text-[#2f2f2f] hover:bg-[#EBEBEB]"
+
                   >
                     Cancel
                   </button>
@@ -1229,7 +1285,8 @@ export default function CreateRequestRender(props: Props): JSX.Element {
 
                       if (fileInputRef.current) fileInputRef.current.value = "";
                     }}
-                    className="h-11 min-w-[140px] rounded-[8px] bg-[#e8242a] px-6 text-[15px] font-semibold text-white hover:bg-[#d61b22]"
+                    className="h-11 min-w-[140px] rounded-[8px] bg-[#DA2128] px-6 text-[15px] font-semibold text-white hover:bg-[#AF0007]"
+
                   >
                     Remove
                   </button>
@@ -1243,7 +1300,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
 
 
         {submitError && (
-          <div className="mb-3 rounded-md bg-red-50 border border-red-200 px-4 py-2 text-[12px] text-red-700">
+          <div className="mb-3 rounded-md bg-red-50 border border-red-200 px-4 py-2 text-[12px] text-[#E56D71]">
             {submitError}
           </div>
         )}
@@ -1287,7 +1344,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                   <button
                     type="button"
                     onClick={cancelRemoveItem}
-                    className="h-11 min-w-[110px] rounded-[8px] bg-[#ececec] px-6 text-[14px] font-medium text-[#2f2f2f] hover:bg-[#e2e2e2]"
+                    className="h-11 min-w-[110px] rounded-[8px] bg-[#E8E8E8] px-6 text-[14px] font-medium text-[#2f2f2f] hover:bg-[#EBEBEB]"
                   >
                     Cancel
                   </button>
@@ -1333,7 +1390,8 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                   <button
                     type="button"
                     onClick={() => setUploadConfirmOpen(false)}
-                    className="h-11 min-w-[110px] rounded-[8px] bg-[#ececec] px-6 text-[14px] font-medium text-[#2f2f2f] hover:bg-[#e2e2e2]"
+                    className="h-11 min-w-[110px] rounded-[8px] bg-[#E8E8E8] px-6 text-[14px] font-medium text-[#2f2f2f] hover:bg-[#EBEBEB]"
+
                   >
                     Cancel
                   </button>
@@ -1349,19 +1407,15 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                           throw new Error("Please select an Excel file.");
                         }
 
-                        // Validate first so total amount/qty are correct before approval-chain creation.
-                        const validated = await onRunExcelUploadAndValidate();
-                        if (!validated.ok) {
-                          return;
-                        }
+
 
                         await createExcelPendingRequest(
                           context,
                           selectedExcelFile,
                           userData,
                           usage,
-                          validated.totalAmount,
-                          validated.totalQty,
+                          0,
+                          0,
                           excelFileName
                         );
 
@@ -1378,7 +1432,8 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                         setIsProcessing(false);
                       }
                     }}
-                    className="h-11 min-w-[170px] rounded-[8px] bg-black px-7 text-[14px] font-semibold text-white hover:opacity-90"
+                    className="h-11 min-w-[170px] rounded-[8px] bg-[#000000] px-7 text-[14px] font-semibold text-white hover:bg-[#3B3B3B]"
+
                   >
                     Upload file
                   </button>
@@ -1468,7 +1523,8 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                   <button
                     type="button"
                     onClick={() => setSubmitConfirmOpen(false)}
-                    className="h-10 min-w-[100px] px-6 rounded-lg bg-gray-100 text-gray-700 text-[13px] font-medium hover:bg-gray-200"
+                    className="h-10 min-w-[100px] px-6 rounded-lg bg-[#E8E8E8] text-gray-700 text-[13px] font-medium hover:bg-[#EBEBEB]"
+
                   >
                     Cancel
                   </button>
@@ -1547,7 +1603,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                 <div className="mt-8 flex justify-center gap-3">
                   <button
                     type="button"
-                    className="h-11 min-w-[110px] rounded-[8px] bg-[#ececec] px-6 text-[14px] font-medium text-[#2f2f2f] hover:bg-[#e2e2e2]"
+                    className="h-11 min-w-[110px] rounded-[8px] bg-[#E8E8E8] px-6 text-[14px] font-medium text-[#2f2f2f] hover:bg-[#EBEBEB]"
                     onClick={() => setDiscardConfirmOpen(false)}
                   >
                     Cancel
@@ -1613,7 +1669,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                   <button
                     type="button"
                     onClick={onExcelFailOk}
-                    className="h-10 px-8 rounded-md bg-black text-white text-[12px] font-semibold hover:opacity-90"
+                    className="h-10 px-8 rounded-md bg-[#000000] text-white text-[12px] font-semibold hover:bg-[#222222]"
                   >
                     OK, Got it
                   </button>
@@ -1646,7 +1702,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                   <button
                     type="button"
                     onClick={closeManualStockPopup}
-                    className="h-10 px-8 rounded-md bg-black text-white text-[12px] font-semibold hover:opacity-90"
+                    className="h-10 px-8 rounded-md bg-[#000000] text-white text-[12px] font-semibold hover:bg-[#222222]"
                   >
                     Edit quantity
                   </button>
@@ -1678,7 +1734,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                   <button
                     type="button"
                     onClick={() => setCustomErrorOpen(false)}  // Close the popup
-                    className="h-10 px-8 rounded-md bg-black text-white text-[12px] font-semibold hover:opacity-90"
+                    className="h-10 px-8 rounded-md bg-[#000000] text-white text-[12px] font-semibold hover:bg-[#222222]"
                   >
                     Try again
                   </button>

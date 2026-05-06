@@ -11,14 +11,15 @@ import ExportPDFPage from "./pages/ExportPDFPage";
 import TeamRequestsPage from "./pages/TeamRequest/TeamRequestsPage";
 
 import { IEformProps } from "./IEformProps";
-import { HttpClient, SPHttpClient } from "@microsoft/sp-http";
+import { SPHttpClient } from "@microsoft/sp-http";
 import MyRequestsPage from "./pages/MyRequestsPage";
 import Loading from "./ui/Loading";
 
 import AllRequestPage from "./pages/AllRequestPage/AllRequestPage";
 import { RouteState, SecurityPermissions } from "./spHelpers";
-import { logger } from "./utils/logger";
+
 import { ExportActionInfo } from "./pages/ExportActionInfo";
+import { submitApprovalDecision } from "./pages/ApprovalDecisionService";
 
 export type Route = "home" | "create" | "exportPdf" | "team" | "all" | "my";
 export type ExportSource = "my" | "team" | "all";
@@ -125,7 +126,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
           setRoute("exportPdf");
         } else {
           // Mismatch — URL is invalid, stay on home
-          logger.log("Deep-link mismatch: RequestId", requestId, "has Title", item.Title, "but URL has", transactionId);
+
         }
       })
       .catch(() => {
@@ -135,7 +136,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
   }, [context]);
 
   React.useEffect(() => {
-    logger.log("Runtime Flow URL changed:", runtimeFlowUrl);
+
   }, [runtimeFlowUrl]);
 
   // ── Check FinanceAdmin from EForm Users ───────────────────────────────────
@@ -277,7 +278,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
   }, [context]);
 
   const submitExportDecision = React.useCallback(
-    async (action: "Approve" | "Reject" | "Bypass", comments = ""): Promise<void> => {
+    async (action: "Approve" | "Reject" | "Bypass", comments = ""): Promise<string> => {
       if (!selectedSpId) throw new Error("Request id is missing.");
       if (!ApprovalFlowUrl) throw new Error("Approval flow URL is missing.");
       if (exportSource === "team" && !permissions.approveTeam) {
@@ -290,51 +291,44 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
       const actorEmail = String(context.pageContext.user.email || "").trim();
       const position = await getCurrentUserPosition();
 
-      const payload = {
+      // ✅ Fetch request header to get transactionId, totals, purpose, status
+      const webUrl = context.pageContext.web.absoluteUrl;
+      const headerUrl =
+        `${webUrl}/_api/web/lists/getbytitle('InventoryRequests')/items(${selectedSpId})` +
+        `?$select=Title,TotalQuantity,TotalAmount,WorkflowStatus,Purpose/Title&$expand=Purpose`;
+
+      const headerRes = await context.spHttpClient.get(headerUrl, SPHttpClient.configurations.v1);
+      if (!headerRes.ok) {
+        throw new Error(`Unable to load request header (${headerRes.status})`);
+      }
+      const header = await headerRes.json();
+
+      // ✅ Use shared service — same logic as TeamRequestsPage
+      const result = await submitApprovalDecision({
+        context,
+        approvalFlowUrl: ApprovalFlowUrl,
+        apiKey,
+        productFlowUrl: effectiveFlowUrl,
         requestId: selectedSpId,
+        transactionId: String(header?.Title || ""),
         actorEmail,
         position,
         action,
-        comments
-      };
-
-      const res = await context.httpClient.post(ApprovalFlowUrl, HttpClient.configurations.v1, {
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey
-        },
-        body: JSON.stringify(payload)
+        comments,
+        totalQuantity: Number(header?.TotalQuantity || 0),
+        totalTagPrice: Number(header?.TotalAmount || 0),
+        purpose: String(header?.Purpose?.Title || ""),
+        status: String(header?.WorkflowStatus || ""),
       });
 
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `Flow call failed (${res.status})`);
-      }
+      if (!result.success) throw new Error(result.message);
 
-      let resp: { status?: boolean | string; success?: boolean; message?: string } = {};
-      try {
-        resp = (await res.json()) as { status?: boolean | string; success?: boolean; message?: string };
-      } catch {
-        resp = {};
-      }
-
-      const ok =
-        typeof resp?.status === "boolean"
-          ? resp.status
-          : String(resp?.status || "").toLowerCase() === "true"
-            ? true
-            : Boolean(resp?.success);
-
-      const message =
-        typeof resp?.message === "string" && resp.message.trim()
-          ? resp.message.trim()
-          : ok
-            ? "Action completed successfully."
-            : "Action failed.";
-
-      if (!ok) throw new Error(message);
+      return result.message; // ✅ return PA's message on success
     },
-    [selectedSpId, ApprovalFlowUrl, exportSource, permissions.approveTeam, getApprovalApiKey, context, getCurrentUserPosition]
+    [
+      selectedSpId, ApprovalFlowUrl, exportSource, permissions.approveTeam,
+      getApprovalApiKey, context, getCurrentUserPosition, effectiveFlowUrl
+    ]
   );
 
   // ── REMOVED: buildExportActionHandlers ──
@@ -483,9 +477,16 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
               exportSource={exportSource}
               exportActionInfo={exportSource === "team" ? exportActionInfo : undefined}
               onNavigate={safeNavigate}
-              onApprove={async (comments?: string) => submitExportDecision("Approve", comments || "")}
-              onReject={async (comments?: string) => submitExportDecision("Reject", comments || "")}
-              onBypass={async (comments?: string) => submitExportDecision("Bypass", comments || "")}
+              onApprove={async (comments?: string) =>
+                submitExportDecision("Approve", comments || "")  // now returns Promise<string>
+              }
+              onReject={async (comments?: string) =>
+                submitExportDecision("Reject", comments || "")
+              }
+              onBypass={async (comments?: string) =>
+                submitExportDecision("Bypass", comments || "")
+              }
+
             />
           </>
         );

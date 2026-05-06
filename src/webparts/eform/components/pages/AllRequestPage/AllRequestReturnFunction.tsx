@@ -77,8 +77,8 @@ type Props = {
   onSearchWithField?: (args: { field: SearchFieldKey; text: string }) => void;
   canExport: boolean;
   showDisabledExport: boolean;
-    manualSelectedCount: number;   
-
+  manualSelectedCount: number;
+  countIncreased: boolean;
 };
 
 export default function AllRequestRender({
@@ -128,7 +128,8 @@ export default function AllRequestRender({
   onSearchWithField,
   canExport,
   showDisabledExport,
-  manualSelectedCount
+  manualSelectedCount,
+  countIncreased
 }: Props): JSX.Element {
 
   const hasActiveFilters =
@@ -179,7 +180,7 @@ export default function AllRequestRender({
               onExportExcel={onExportExcel}
               canExport={canExport}
               showDisabledExport={showDisabledExport}
-                manualSelectedCount={manualSelectedCount}   // ✅ ADD — but use prop below
+              manualSelectedCount={manualSelectedCount}   // ✅ ADD — but use prop below
 
             />
           </div>
@@ -208,7 +209,7 @@ export default function AllRequestRender({
               onRestoreManualSelection={onRestoreManualSelection}
               onExportExcel={onExportExcel}
               canExport={canExport}
-                manualSelectedCount={manualSelectedCount}        
+              manualSelectedCount={manualSelectedCount}
 
             />
           </div>
@@ -251,7 +252,8 @@ export default function AllRequestRender({
               </div>
 
               {/* Card */}
-              <div className={`${card} overflow-hidden`}>
+
+              <div key={String(countIncreased)} className={`${card} overflow-hidden`}>
 
                 {/* Search */}
                 <div className="px-4 py-3 flex items-center justify-between border-b border-[#eeeeee]">

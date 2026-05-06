@@ -81,15 +81,15 @@ export default function SelectBox({
 
   // 🔹 UPDATED LOGIC HERE (only change)
   React.useEffect(() => {
-  const handleClickOutside = (e: MouseEvent) => {
-    if (!ref.current?.contains(e.target as Node)) {
-      setOpen(false);
-    }
-  };
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
 
-  document.addEventListener("mousedown", handleClickOutside);
-  return () => document.removeEventListener("mousedown", handleClickOutside);
-}, []);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   React.useEffect(() => {
     if (!open || kind !== "dateRange") return;
@@ -98,29 +98,29 @@ export default function SelectBox({
   }, [open, kind, from, to]);
 
   const display =
-  kind === "dateRange"
-    ? from || to
-      ? `${formatDisplayDate(from)} to ${formatDisplayDate(to)}`
-      : ""
-    : selected.length === 0
-      ? ""
-      : selected.length === 1
-        ? selected[0]
-        : `${selected.length} selected`;
+    kind === "dateRange"
+      ? from || to
+        ? `${formatDisplayDate(from)} to ${formatDisplayDate(to)}`
+        : ""
+      : selected.length === 0
+        ? ""
+        : selected.length === 1
+          ? selected[0]
+          : `${selected.length} selected`;
 
   const toggle = (v: string): void => {
-  if (!onSelectedChange) return;
+    if (!onSelectedChange) return;
 
-  const idx = selected.indexOf(v);
-  const next = idx >= 0
-    ? selected.filter((x) => x !== v)
-    : [...selected, v];
+    const idx = selected.indexOf(v);
+    const next = idx >= 0
+      ? selected.filter((x) => x !== v)
+      : [...selected, v];
 
-  onSelectedChange(next);
+    onSelectedChange(next);
 
-  // ✅ Auto close after select
-  setOpen(false);
-};
+    // ✅ Auto close after select
+    setOpen(false);
+  };
 
   const fromSafe = from || "";
   const toSafe = to || "";
@@ -189,8 +189,8 @@ export default function SelectBox({
       <button
         type="button"
         onClick={() => setOpen((p) => !p)}
-       className={`
-w-full border border-[#e5e7eb]  bg-gray-50
+        className={`
+w-full border-2 border-[#e5e7eb]  bg-[#F8F8F8]
 px-3 py-2 text-left rounded-lg
 hover: bg-gray-50
 focus:outline-none
@@ -204,28 +204,20 @@ ${open ? "rounded-b-none border-b-0" : ""}
                 {placeholder}
               </div>
 
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+              <span
+                className={`shrink-0 h-5 w-5 rounded-full bg-[#FBE9EA] hover:bg-[#E8E8E8] flex items-center justify-center transition-transform duration-200 ${open ? "rotate-180" : ""}`}
               >
-                <circle cx="12" cy="12" r="10" fill="#FEE2E2" />
-                <path
-                  d="M8.5 10.5L12 14L15.5 10.5"
-                  stroke="#EF4444"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="#E60023">
+                  <path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z" />
+                </svg>
+              </span>
             </div>
 
             {!open && display && (
-  <div className="truncate text-[11px] text-gray-700">
-    {display}
-  </div>
-)}
+              <div className="truncate text-[11px] text-gray-700">
+                {display}
+              </div>
+            )}
           </>
         ) : (
           <div className="flex items-center justify-between">
@@ -233,39 +225,32 @@ ${open ? "rounded-b-none border-b-0" : ""}
               {placeholder}
             </div>
 
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+            <span
+              className={`shrink-0 h-5 w-5 rounded-full bg-[#FBE9EA] hover:bg-[#E8E8E8] flex items-center justify-center transition-transform duration-200 ${open ? "rotate-180" : ""}`}
             >
-              <circle cx="12" cy="12" r="10" fill="#FEE2E2" />
-              <path
-                d="M8.5 10.5L12 14L15.5 10.5"
-                stroke="#EF4444"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="#E60023">
+                <path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z" />
+              </svg>
+            </span>
           </div>
         )}
 
         {kind !== "dateRange" && display && (
-  <div className="truncate text-[11px] text-gray-700">
-    {display}
-  </div>
-)}
+          <div className="truncate text-[11px] text-gray-700">
+            {display}
+          </div>
+        )}
       </button>
 
       {/* Dropdown */}
-     {open && (
+      {open && (
         <div
           className={[
-            "absolute z-50 w-full border border-[#e5e7eb]  bg-gray-50 shadow-md",
-           kind === "dateRange"
-  ? "mt-0 rounded-b-lg rounded-t-none border-t-0"
-  : "mt-0 rounded-b-lg rounded-t-none border-t-0"
+            "absolute z-50 w-full border border-[#e5e7eb]  bg-[#F8F8F8] shadow-md",
+
+            kind === "dateRange"
+              ? "mt-0 rounded-b-lg rounded-t-none border-t-0"
+              : "mt-0 rounded-b-lg rounded-t-none border-t-0"
           ].join(" ")}
         >
           {kind === "dateRange" ? (
@@ -352,8 +337,9 @@ ${open ? "rounded-b-none border-b-0" : ""}
                               : isInRange
                                 ? "bg-[#dbeafe] text-[#1d4ed8]"
                                 : inCurrentMonth
-                                  ? "text-[#4b5563] hover: bg-gray-50"
+                                  ? "text-[#4b5563] hover: bg-[#F8F8F8]"
                                   : "text-[#cbd5e1] hover:bg-[#f8fafc]",
+
                           ].join(" ")}
                           aria-label={`Pick ${iso}`}
                         >
@@ -366,11 +352,12 @@ ${open ? "rounded-b-none border-b-0" : ""}
               </div>
             </div>
           ) : (
-            <div className="max-h-[260px] overflow-auto p-3 space-y-2  bg-gray-50">
+            <div className="max-h-[260px] overflow-auto p-3 space-y-2  bg-[#F8F8F8]">
+
               {options.map((opt) => (
                 <label
                   key={opt}
-                 className="flex items-center gap-2 text-[11px] text-gray-700 cursor-pointer"
+                  className="flex items-center gap-2 text-[11px] text-gray-700 cursor-pointer"
                 >
                   <input
                     type="checkbox"

@@ -106,7 +106,7 @@ export default function MyRequestHeader(
                       : "h-9 px-3 rounded-md text-[12px] font-medium transition",
                     exportButtonDisabled
                       ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                      : "bg-[#eeeeee] text-gray-700 hover:bg-[#e0e0e0]",
+                      : "bg-[#E8E8E8] text-gray-700 hover:bg-[#E8E8E8]",
                   ].join(" ")}
                 >
                   Export
@@ -170,8 +170,9 @@ export default function MyRequestHeader(
               onClick={onCreate}
               className={
                 isDesktop
-                  ? "h-8 px-4 rounded-md bg-black text-white text-[12px] font-semibold hover:bg-gray-800"
-                  : "h-9 px-4 rounded-md bg-black text-white text-[12px] font-semibold hover:bg-gray-800"
+                  ? "h-8 px-4 rounded-md bg-[#000000] text-white text-[12px] font-semibold hover:bg-[#3B3B3B]"
+                  : "h-9 px-4 rounded-md bg-[#000000] text-white text-[12px] font-semibold hover:bg-[#3B3B3B]"
+
               }
             >
               Create request

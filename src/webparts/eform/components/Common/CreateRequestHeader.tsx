@@ -34,7 +34,7 @@ export default function CreateRequestHeader({
       subtitle={
         <div className={isDesktop ? "flex items-center gap-2 flex-nowrap" : "flex items-center gap-1 flex-wrap"}>
           <span
-            className="text-blue-600 cursor-pointer hover:underline text-xs"
+            className="text-[#6099E3] cursor-pointer hover:underline text-xs"
             onClick={() => onNavigate("my")}
           >
             My requests
@@ -47,16 +47,17 @@ export default function CreateRequestHeader({
               className="
                 inline-flex items-center
                 rounded-md
-                border border-[#f59e0b]
-                bg-[#fff7ed]
+                border border-[#FF8040]
+                bg-[#FFF2EC]
                 px-3 py-1
                 text-[11px] font-semibold
-                text-[#c2410c]
+                text-[#FF9058]
               "
             >
               {excelNoticeText}
             </div>
           )}
+
         </div>
       }
       right={
@@ -65,8 +66,9 @@ export default function CreateRequestHeader({
             type="button"
             onClick={onDiscard}
             className={isDesktop
-              ? "h-10 w-[106px] rounded-[8px] border border-[#e5e7eb] bg-[#e5e7eb] text-sm font-semibold text-[#2f2f2f] hover:bg-[#dfe3e6]"
-              : "h-11 min-w-0 w-full px-2 rounded-lg border border-[#e5e7eb] bg-[#e5e7eb] text-[13px] leading-none font-semibold text-[#2f2f2f] hover:bg-[#dfe3e6]"}
+              ? "h-10 w-[106px] rounded-[8px] border border-[#EBEBEB] bg-[#EBEBEB] text-sm font-semibold text-[#2f2f2f] hover:bg-[#dfe3e6]"
+              : "h-11 min-w-0 w-full px-2 rounded-lg border border-[#EBEBEB] bg-[#EBEBEB] text-[13px] leading-none font-semibold text-[#2f2f2f] hover:bg-[#dfe3e6]"}
+
           >
             Discard
           </button>
@@ -80,8 +82,9 @@ export default function CreateRequestHeader({
               ${isDesktop ? "h-10 w-[170px] rounded-[8px] text-sm" : "h-11 min-w-0 w-full px-2 rounded-lg text-[13px] leading-none"}
               font-semibold transition-colors
               ${draftDisabled
-                  ? "bg-[#cfcfcf] text-[#7f7f7f] cursor-not-allowed"
+                  ? "bg-[#D9D9D9] text-[#7f7f7f] cursor-not-allowed"
                   : "bg-black text-white hover:opacity-90"
+
                 }
             `}
             >
@@ -98,9 +101,10 @@ export default function CreateRequestHeader({
                 ? "h-10 w-[170px] rounded-[8px] border text-sm font-semibold"
                 : "h-11 min-w-0 w-full px-2 rounded-lg border text-[13px] leading-none font-semibold",
               submitDisabled
-                ? "border-[#cfcfcf] bg-[#cfcfcf] text-[#7f7f7f] cursor-not-allowed"
+                ? "border-[#D9D9D9] bg-[#D9D9D9] text-[#7f7f7f] cursor-not-allowed"
                 : "border-[#16a34a] bg-[#eaf7ea] text-[#0a8f2f] hover:bg-[#ddf1de]"
             ].join(" ")}
+
           >
             Submit
           </button>

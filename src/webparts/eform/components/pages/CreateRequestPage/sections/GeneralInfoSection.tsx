@@ -22,8 +22,7 @@ export default function GeneralInfoSection({ userData, card }: Props): JSX.Eleme
  
   return (
     <section className={`${card} p-4 sm:p-5`}>
-      <h2 className="text-[13px] font-semibold text-gray-900 mb-4">General Information</h2>
- 
+      <h2 className="text-[13px] font-bold text-gray-900 mb-4">General Information</h2> 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-10 gap-y-4">
         <Info label="ชื่อผู้เบิก / Requestor Name :" value={u?.Title || "-"} />
         <Info label="รหัสพนักงาน / Employee ID :" value={u?.EmployeeID || "-"} />

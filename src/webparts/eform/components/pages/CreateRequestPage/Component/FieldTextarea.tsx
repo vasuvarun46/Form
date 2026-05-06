@@ -68,7 +68,7 @@ export default function FieldTextarea({
           }}
           className={[
             "w-full rounded-md",
-            "px-3 pt-6 pb-3",
+            "px-3 pt-[18px] pb-3",
             "text-[12px]",
             "resize-none",
             "min-h-[90px]",
@@ -76,22 +76,23 @@ export default function FieldTextarea({
             disabled && grayBackground ? "text-gray-500" : "text-gray-700",
             "disabled:opacity-100",
             "disabled:cursor-not-allowed",
-            "border border-[#e7e7e7] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 hover:border-blue-400",
+            "border-2 border-[#e7e7e7] focus:outline-none focus:border-blue-500 focus:ring-0 hover:!border-[#76A8E8]",
+
           ].join(" ")}
           style={{ backgroundColor: bgColor }}
         />
 
         <div
-          className="absolute left-3 top-1.5 z-10 text-[10px] text-gray-500 px-1 pointer-events-none flex items-center gap-1"
+          className="absolute left-3 top-1.5 z-10 text-[10px] text-gray-500 pointer-events-none"
           style={{ backgroundColor: bgColor }}
         >
-          <span className="text-[#E60023]">*</span>
-          {label}
-          <span className="text-gray-500">({currentLength}/{maxLength})</span>
+          <span className="text-[#E56D71]">*</span>{label} ({currentLength}/{maxLength})
         </div>
+
       </div>
 
-      {error && <div className="mt-1 text-[10px] text-red-700">{error}</div>}
+      {error && <div className="mt-1 text-[10px] text-[#E56D71]">{error}</div>}
+
     </div>
   );
 }

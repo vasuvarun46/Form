@@ -15,8 +15,7 @@
 import * as React from "react";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
 import { HttpClient, SPHttpClient } from "@microsoft/sp-http";
-import { logger } from "../../utils/logger";
-import { formatDateDdMmYyyy } from "../AllRequestPage/dateUtils";
+
 import {
   canonicalizeStatusFilterKey,
   dedupeLabels,
@@ -283,8 +282,7 @@ async function spPostJson(
   body: any,
   extraHeaders?: Record<string, string>
 ): Promise<any> {
-  logger.log(url);
-  logger.log(extraHeaders, body);
+
 
   const res = await context.httpClient.post(
     url,
@@ -380,6 +378,13 @@ export function useTeamRequestsLogic(
     context.pageContext.user?.email || ""
   ).toLowerCase();
   const currentUserEmailEsc = escOdata(currentUserEmailRaw);
+  // ── Storage keys for team request count tracking ──
+  const STORAGE_KEY_SUBMITTED = "teamreq_submitted_count";
+  const STORAGE_KEY_APPROVED = "teamreq_approved_count";
+  const STORAGE_KEY_REJECTED = "teamreq_rejected_count";
+
+  // ── Toggles to force re-render when any count increases ──
+  const [countIncreased, setCountIncreased] = React.useState<boolean>(false);
 
   /* =========================================================
      LOAD PROFILE from EForm Users
@@ -426,7 +431,7 @@ export function useTeamRequestsLogic(
   }, [context, siteUrl]);
 
   const loadStatusChoices = React.useCallback(async (): Promise<void> => {
-    setStatusOptions(["In-Approval", "Approved", "Rejected"]);
+    setStatusOptions(["In-Approval", "Approved", "Rejected", "Submitted"]);
   }, []);
 
   /* =========================================================
@@ -470,6 +475,17 @@ export function useTeamRequestsLogic(
     },
     [context, siteUrl]
   );
+  function formatDateDdMmYyyy(iso: string | undefined): string {
+    if (!iso) return "-";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "-";
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Bangkok",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(d); // Returns "DD/MM/YYYY" in Bangkok time
+  }
 
   /* =========================================================
      LOAD INVENTORY REQUESTS
@@ -697,13 +713,16 @@ export function useTeamRequestsLogic(
      LOAD ALL
   ========================================================= */
 
-  const loadAll = React.useCallback(async (): Promise<void> => {
-    const isInitialLoad = !hasLoadedOnce;
+  const loadAll = React.useCallback(async (silent: boolean = false): Promise<void> => {
+
     try {
-      if (isInitialLoad) {
-        setLoading(true);
-      } else {
-        setTableLoading(true);
+
+      if (!silent) {
+        if (!hasLoadedOnce) {
+          setLoading(true);
+        } else {
+          setTableLoading(true);
+        }
       }
       setError("");
 
@@ -742,8 +761,10 @@ export function useTeamRequestsLogic(
     } catch (e: unknown) {
       setError(toUserMessage(e, "Failed to load team requests"));
     } finally {
-      setLoading(false);
-      setTableLoading(false);
+      if (!silent) {
+        setLoading(false);
+        setTableLoading(false);
+      }
       setHasLoadedOnce(true);
     }
   }, [
@@ -1174,8 +1195,114 @@ export function useTeamRequestsLogic(
   ========================================================= */
 
   React.useEffect(() => {
-    loadAll().catch(() => undefined);
+    loadAll(false).catch(() => undefined);
   }, [loadAll]);
+
+
+  /* ── Lightweight fetch — counts Submitted, Approved, Rejected
+      scoped to records visible to this approver ── */
+  const getStatusCounts = React.useCallback(async (): Promise<{
+    submitted: number;
+    approved: number;
+    rejected: number;
+  }> => {
+    // ✅ Filter by CurrentApproverEmail OR canViewRequest approver
+    // For counting, we use a simple filter matching what loadInventoryRequests does
+    const buildUrl = (status: string): string =>
+      `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items` +
+      `?$select=Id,CurrentApproverEmail,ApprovalChainJSON` +
+      `&$filter=WorkflowStatus eq '${escOdata(status)}'` +
+      `&$top=5000`;
+
+    const fetchCount = async (status: string): Promise<number> => {
+      const res = await context.spHttpClient.get(
+        buildUrl(status),
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            Accept: "application/json;odata=nometadata",
+            "odata-version": "",
+          },
+        }
+      );
+      if (!res.ok) throw new Error(`Failed to fetch ${status} count`);
+      const data = await res.json();
+
+      // ✅ Filter client-side to only rows visible to this approver
+      // (same visibility logic as loadInventoryRequests)
+      const loginEmail = currentUserEmailRaw;
+      const visible = (data?.value || []).filter((it: any) => {
+        const currentApproverEmail = String(it?.CurrentApproverEmail || "")
+          .trim()
+          .toLowerCase();
+
+        if (currentApproverEmail === loginEmail) return true;
+
+        const levels = parseAllApprovalLevels(it?.ApprovalChainJSON);
+        return levels.some(
+          (l) => l.approverEmail === loginEmail && l.canViewRequest === true
+        );
+      });
+
+      return visible.length;
+    };
+
+    const [submitted, approved, rejected] = await Promise.all([
+      fetchCount("Submitted"),
+      fetchCount("Approved"),
+      fetchCount("Rejected"),
+    ]);
+
+    return { submitted, approved, rejected };
+  }, [context, siteUrl, currentUserEmailRaw]);
+
+  /* ── Compare counts with localStorage, reload silently if increased ── */
+  const checkAndUpdateCounts = React.useCallback(
+    async (isInitialLoad: boolean): Promise<void> => {
+      try {
+        const {
+          submitted: currentSubmitted,
+          approved: currentApproved,
+          rejected: currentRejected,
+        } = await getStatusCounts();
+
+        const prevSubmitted = Number(localStorage.getItem(STORAGE_KEY_SUBMITTED) ?? 0);
+        const prevApproved = Number(localStorage.getItem(STORAGE_KEY_APPROVED) ?? 0);
+        const prevRejected = Number(localStorage.getItem(STORAGE_KEY_REJECTED) ?? 0);
+
+        const hasIncreased =
+          !isInitialLoad &&
+          (
+            currentSubmitted > prevSubmitted ||
+            currentApproved > prevApproved ||
+            currentRejected > prevRejected
+          );
+
+        if (hasIncreased) {
+          setCountIncreased((prev) => !prev); // ✅ triggers re-render via key prop
+          await loadAll(true);                    // ✅ reloads table data silently
+        }
+
+        // ✅ Always persist latest counts
+        localStorage.setItem(STORAGE_KEY_SUBMITTED, String(currentSubmitted));
+        localStorage.setItem(STORAGE_KEY_APPROVED, String(currentApproved));
+        localStorage.setItem(STORAGE_KEY_REJECTED, String(currentRejected));
+
+      } catch (err) {
+        console.error("[TeamService] checkAndUpdateCounts error:", err);
+      }
+    },
+    [getStatusCounts, loadAll]
+  );
+  React.useEffect(() => {
+    checkAndUpdateCounts(true).catch(console.error);  // initial save, no re-render
+
+    const intervalId = setInterval(() => {
+      checkAndUpdateCounts(false).catch(console.error); // poll — re-renders if count increased
+    }, 2 * 60 * 1000);
+
+    return () => clearInterval(intervalId);
+  }, [checkAndUpdateCounts]);
 
   return {
     loading,
@@ -1215,5 +1342,6 @@ export function useTeamRequestsLogic(
 
     reload: loadAll,
     rows,
+    countIncreased
   };
 }

@@ -7,6 +7,7 @@ type QtyStepperProps = {
   onChange: (v: string | number) => void;
   disabled?: boolean;
   emptyValue?: number;
+  maxStock?: number;
 };
 
 export default function QtyStepper({
@@ -15,7 +16,9 @@ export default function QtyStepper({
   onInc,
   onChange,
   disabled,
-  emptyValue = 1
+  emptyValue = 1,
+  maxStock
+
 }: QtyStepperProps): JSX.Element {
   const [draftValue, setDraftValue] = React.useState<string>(String(value ?? 1));
 
@@ -35,12 +38,16 @@ export default function QtyStepper({
     }
     onChange(draftValue);
   };
+  const currentQty = Number(draftValue) || value;
 
   return (
-    <div className="pdf-thai mx-auto w-[120px] flex items-center rounded-md overflow-hidden bg-white border border-[#0a66d8]">
+    <div className="pdf-thai mx-auto w-[120px] flex items-center rounded-md overflow-hidden bg-white border-2 border-[#C4C4C4]">
+
       <button
         type="button"
-        className="w-9 h-8 bg-white hover:bg-[#f2f7ff] text-gray-700 border-r border-[#dbe8ff]"
+        style={{ borderRight: "2px solid #C4C4C4" }}
+        className={`w-9 h-8 text-gray-700 ${disabled || value <= 1 || (maxStock !== undefined && maxStock > 0 && currentQty > maxStock) ? "bg-[#D9D9D9]" : "bg-white hover:bg-[#E8E8E8]"}`}
+
         onClick={onDec}
         disabled={disabled || value <= 1}
         aria-label="Decrease quantity"
@@ -68,9 +75,12 @@ export default function QtyStepper({
 
       <button
         type="button"
-        className="w-9 h-8 bg-white hover:bg-[#f2f7ff] text-gray-700 border-l border-[#dbe8ff]"
+        style={{ borderLeft: "2px solid #C4C4C4", borderRight: "none", borderTop: "none", borderBottom: "none" }}
+        className={`w-9 h-8 text-gray-700 ${disabled || (maxStock !== undefined && maxStock > 0 && currentQty >= maxStock) ? "bg-[#D9D9D9] cursor-not-allowed" : "bg-white hover:bg-[#E8E8E8]"}`}
+
         onClick={onInc}
-        disabled={disabled}
+        disabled={disabled || (maxStock !== undefined && maxStock > 0 && currentQty >= maxStock)}
+
         aria-label="Increase quantity"
       >
         +

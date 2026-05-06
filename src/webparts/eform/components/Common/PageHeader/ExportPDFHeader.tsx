@@ -50,13 +50,13 @@ export default function ExportPDFHeader({
     exportSource === "team"
       ? "Team requests"
       : exportSource === "all"
-      ? "All requests"
-      : "My requests";
+        ? "All requests"
+        : "My requests";
   const canUseActionButtons =
     exportSource === "team" ? permissions?.approveTeam : permissions?.approve;
 
   return (
-  <div className="shrink-0 sticky top-0 z-20 bg-[#f6f6f6] border-b border-gray-200">
+    <div className="shrink-0 sticky top-0 z-20 bg-[#f6f6f6] border-b border-gray-200">
 
       <div className={isDesktop ? "w-full px-8 lg:px-14 py-4" : "w-full px-3 py-3"}>
 
@@ -68,7 +68,7 @@ export default function ExportPDFHeader({
               Transaction ID : {transactionId || ""}
             </h1>
 
-           <div className={isDesktop ? "text-sm text-gray-500 mt-1" : "text-xs text-gray-500 mt-1"}>
+            <div className={isDesktop ? "text-sm text-gray-500 mt-1" : "text-xs text-gray-500 mt-1"}>
               <button
                 type="button"
                 className="text-blue-600 hover:underline"
@@ -88,8 +88,9 @@ export default function ExportPDFHeader({
                 onClick={onExportPdf}
                 disabled={pdfBusy}
                 className={isDesktop
-                  ? "h-11 min-w-[130px] px-8 bg-black text-white rounded-md text-[14px] font-semibold disabled:opacity-60"
-                  : "h-8 min-w-[100px] px-3 bg-black text-white rounded-md text-[12px] font-semibold disabled:opacity-60"}
+                  ? "h-11 min-w-[130px] px-8 bg-[#000000] text-white rounded-md text-[14px] font-semibold hover:bg-[#3B3B3B] disabled:opacity-60"
+                  : "h-8 min-w-[100px] px-3 bg-[#000000] text-white rounded-md text-[12px] font-semibold hover:bg-[#3B3B3B] disabled:opacity-60"}
+
               >
                 {pdfBusy ? "Exporting..." : "Export PDF"}
               </button>
@@ -97,7 +98,7 @@ export default function ExportPDFHeader({
 
             {canAct && canUseActionButtons && (
               <>
-                {(isApproveMode|| canAct) && (
+                {(isApproveMode || canAct) && (
                   <button
                     onClick={onApprove}
                     disabled={actionBusy}

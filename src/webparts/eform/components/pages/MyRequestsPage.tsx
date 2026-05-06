@@ -10,13 +10,13 @@ import { ResponsiveTable } from "../Common/ResponsiveTable";
 import Loading from "../ui/Loading";
 import RequestEmptyState from "./RequestEmptyState";
 import { exportToExcel, fetchExportItemsByRequestIds } from "./ExportExcel";
-import { formatDateDdMmYyyy } from "./AllRequestPage/dateUtils";
 import {
   canonicalizeStatusFilterKey,
   dedupeLabels,
 } from "./AllRequestPage/allRequestFilterUtils";
 import { Icon } from "@fluentui/react";
 import { RouteState, SecurityPermissions, ToastType } from "../spHelpers";
+
 
 /* ================= TYPES ================= */
 
@@ -53,7 +53,7 @@ interface Row {
   requestCreatedIso?: string;
   modifiedIso?: string;
   lastActivityIso?: string;
-  ApproverNames?:string
+  ApproverNames?: string;
 }
 
 interface SPListResponse<T> {
@@ -84,7 +84,7 @@ interface InventoryRequestSPItem {
   WorkflowStatus?: Status;
   RequestCreatedOn?: string;
   Modified?: string;
-  ApproverNames?:string
+  ApproverNames?: string;
 }
 
 /* ================= HELPERS ================= */
@@ -101,7 +101,6 @@ function StatusPill({ status }: { status: Status }): JSX.Element {
 
   const isPending = key === "pending";
 
-  // Display text
   const display =
     key === "submitted"
       ? "Submitted"
@@ -117,7 +116,6 @@ function StatusPill({ status }: { status: Status }): JSX.Element {
                 ? "Draft"
                 : status;
 
-  // Color mapping
   const colorMap: Record<string, string> = {
     approved: "text-green-600",
     rejected: "text-red-600",
@@ -142,7 +140,6 @@ function normalizeToastMessage(message: string): string {
 
 function CellText(props: { value: string; maxWidth?: string }): JSX.Element {
   const text = String(props.value || "").trim();
-  // ✅ Show empty string instead of "-" when no value
   const display = text === "-" || text === "" ? "" : text;
   return (
     <div className={`${props.maxWidth || "max-w-[110px]"} truncate`} title={display}>
@@ -157,11 +154,10 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
   const { context } = props;
   const canExport = props.permissions.viewExportOwnReport && props.permissions.exportOwnReport;
 
-
   const card = "bg-white rounded-xl border border-[#e5e5e5] shadow-sm";
 
   const [rows, setRows] = React.useState<Row[]>([]);
-  const [allRows, setAllRows] = React.useState<Row[]>([]); // ✅ ADD THIS
+  const [allRows, setAllRows] = React.useState<Row[]>([]);
 
   const [loading, setLoading] = React.useState(false);
   const [tableLoading, setTableLoading] = React.useState(false);
@@ -175,37 +171,68 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
   const [expectedFrom, setExpectedFrom] = React.useState("");
   const [expectedTo, setExpectedTo] = React.useState("");
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
-  // âœ… store only manual checkbox selections
   const [manualSelectedIds, setManualSelectedIds] = React.useState<string[]>([]);
 
   const [searchDraft, setSearchDraft] = React.useState("");
   const [searchText, setSearchText] = React.useState("");
-  // SORT
-  const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
+
+  // ✅ CHANGED: sortDir → isSorted boolean toggle
+  const [sortState, setSortState] = React.useState<0 | 1>(0);
+  const isSorted = sortState === 1;
+
   const [toast, setToast] = React.useState<null | { type: ToastType; message: string }>(null);
   const [pageIndex, setPageIndex] = React.useState(0);
   const [searchField, setSearchField] = React.useState<"TransactionID" | "RequesterName">("TransactionID");
   const [isAllSelected, setIsAllSelected] = React.useState(false);
+  // Storage keys — shared constants
+  const STORAGE_KEY_APPROVED = "myreq_approved_count";
+  const STORAGE_KEY_REJECTED = "myreq_rejected_count";
+  const STORAGE_KEY_DRAFT = "myreq_draft_count";
 
+
+  // Tracks if approved/rejected count increased → triggers re-render
+  const [countIncreased, setCountIncreased] = React.useState<boolean>(false);
   const pageSize = 15;
-  // âœ… Toggle single row
-  const handleToggleRow = (id: string | number): void => {
-  const idStr = String(id);
-  setIsAllSelected(false); // exit "all selected" mode when manually toggling
-  setSelectedIds((prev) => {
-    const updated = prev.includes(idStr)
-      ? prev.filter((x) => x !== idStr)
-      : [...prev, idStr];
-    setManualSelectedIds(updated);
-    return updated;
-  });
-};
 
+  const handleToggleRow = (id: string | number): void => {
+    const idStr = String(id);
+    setIsAllSelected(false);
+    setSelectedIds((prev) => {
+      const updated = prev.includes(idStr)
+        ? prev.filter((x) => x !== idStr)
+        : [...prev, idStr];
+      setManualSelectedIds(updated);
+      return updated;
+    });
+  };
+
+  /**
+ * Format an ISO UTC date string to dd/MM/yyyy in SharePoint's regional timezone.
+ * Returns "-" for empty / invalid input.
+ */
+  /**
+ * Mirrors CreateRequest's isoToYyyyMmDdSp, but returns dd/MM/yyyy for display.
+ * Same math — guarantees MyRequest displays the same date that CreateRequest saved.
+ */
+  function formatDateDdMmYyyySp(iso: string | undefined): string {
+    if (!iso) return "-";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "-";
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Bangkok",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(d); // Returns "DD/MM/YYYY" in Bangkok time
+  }
 
   /* ================= FILTERED (API-SIDE) ================= */
 
   const filteredRows = React.useMemo(() => {
-    let data = [...allRows];
+    // ✅ CHANGED: Exclude pending records entirely
+    let data = allRows.filter(
+      (r) => r.status.trim().toLowerCase() !== "pending"
+    );
 
     // Status filter
     if (statusSelected.length > 0) {
@@ -245,7 +272,6 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
     // Search
     if (searchText.trim()) {
       const q = searchText.toLowerCase();
-
       if (searchField === "TransactionID") {
         data = data.filter(r =>
           String(r.id).toLowerCase().includes(q)
@@ -257,7 +283,13 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
       }
     }
 
+    // ✅ CHANGED: Drafts first by default
+    const statusOrder: Record<string, number> = { draft: 0, submitted: 1, "in approval": 2, approved: 3, rejected: 4 };
+
+    const getStatusPriority = (s: string): number => statusOrder[s.trim().toLowerCase()] ?? 2;
+    data.sort((a, b) => getStatusPriority(a.status) - getStatusPriority(b.status));
     return data;
+
   }, [
     allRows,
     statusSelected,
@@ -266,21 +298,13 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
     expectedFrom,
     expectedTo,
     searchText,
-    searchField
+    searchField,
   ]);
 
-
-  const sortedRows = React.useMemo(() => {
-    const out = [...filteredRows];
-
-    // Sort by transaction ID
-    out.sort((a, b) => {
-      const cmp = a.id.localeCompare(b.id, undefined, { numeric: true });
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-
-    return out;
-  }, [filteredRows, sortDir]);
+  // ✅ CHANGED: sortedRows uses isSorted — sorts non-draft rows by spId asc when toggled
+  const sortedRows: Row[] = isSorted
+    ? [...filteredRows].reverse()
+    : filteredRows;
 
   React.useEffect(() => {
     setPageIndex(0);
@@ -292,6 +316,7 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
     expectedTo,
     searchText,
     searchField,
+    isSorted,
   ]);
 
 
@@ -301,53 +326,41 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
     safePageIndex * pageSize,
     safePageIndex * pageSize + pageSize
   );
+
   const selectAllFilteredRows = (): void => {
-  const ids = sortedRows.map((r) => String(r.id));
-  setSelectedIds(ids);
-  setManualSelectedIds(ids);
-  setIsAllSelected(true); 
-};
+    const ids = sortedRows.map((r) => String(r.id));
+    setSelectedIds(ids);
+    setManualSelectedIds(ids);
+    setIsAllSelected(true);
+  };
 
-
-const restoreManualSelection = (): void => {
-  setIsAllSelected(false);
-  setSelectedIds(manualSelectedIds);
-};
-
-
-
-  // âœ… Toggle all rows (current page only)
-  const handleToggleAll = (): void => {
-  if (isAllSelected) {
-    
+  const restoreManualSelection = (): void => {
     setIsAllSelected(false);
-    setSelectedIds([]);
-    setManualSelectedIds([]);
-    return;
-  }
+    setSelectedIds(manualSelectedIds);
+  };
 
-  const pageIds = pageRows.map((r) => String(r.id));
-  const allSelectedOnPage = pageIds.every((id) => selectedIds.includes(id));
-
-  if (allSelectedOnPage) {
-    // deselect current page
-    const updated = selectedIds.filter((id) => !pageIds.includes(id));
-    setSelectedIds(updated);
-    setManualSelectedIds(updated);
-  } else {
-    // select current page
-    const updated = [...selectedIds, ...pageIds.filter((id) => !selectedIds.includes(id))];
-    setSelectedIds(updated);
-    setManualSelectedIds(updated);
-  }
-};
-
-
+  const handleToggleAll = (): void => {
+    if (isAllSelected) {
+      setIsAllSelected(false);
+      setSelectedIds([]);
+      setManualSelectedIds([]);
+      return;
+    }
+    const pageIds = pageRows.map((r) => String(r.id));
+    const allSelectedOnPage = pageIds.every((id) => selectedIds.includes(id));
+    if (allSelectedOnPage) {
+      const updated = selectedIds.filter((id) => !pageIds.includes(id));
+      setSelectedIds(updated);
+      setManualSelectedIds(updated);
+    } else {
+      const updated = [...selectedIds, ...pageIds.filter((id) => !selectedIds.includes(id))];
+      setSelectedIds(updated);
+      setManualSelectedIds(updated);
+    }
+  };
 
   React.useEffect(() => {
     if (!toast) return;
-    // const timer = setTimeout(() => setToast(null), 4000);
-    // return () => clearTimeout(timer);
   }, [toast]);
 
   React.useEffect(() => {
@@ -358,7 +371,7 @@ const restoreManualSelection = (): void => {
       incomingType === "success"
         ? "Your request is submitted to the approver(s)."
         : incomingType === "pending"
-          ? "Your request status will be shown as “Pending” while it is being processed."
+          ? "Your request status will be shown as Pending while it is being processed."
           : incomingType === "draft"
             ? "Your request is saved as draft."
             : "Your request is discarded.";
@@ -371,10 +384,6 @@ const restoreManualSelection = (): void => {
     props.onRouteStateConsumed?.();
   }, [props.routeState, props.onRouteStateConsumed]);
 
-  // paging
-
-
-
   const spGet = async <T,>(url: string): Promise<T> => {
     const res: SPHttpClientResponse = await context.spHttpClient.get(
       url,
@@ -384,13 +393,17 @@ const restoreManualSelection = (): void => {
     if (!res.ok) throw new Error(await res.text());
     return (await res.json()) as T;
   };
+
   /* ================= LOAD ================= */
-  const loadAll = React.useCallback(async (): Promise<void> => {
-    if (!hasLoadedOnce) {
-      setLoading(true);
-    } else {
-      setTableLoading(true);
+  const loadAll = React.useCallback(async (silent: boolean = false): Promise<void> => {
+    if (!silent) {
+      if (!hasLoadedOnce) {
+        setLoading(true);
+      } else {
+        setTableLoading(true);
+      }
     }
+
     setError("");
     try {
       const siteUrl = context.pageContext.web.absoluteUrl;
@@ -398,42 +411,28 @@ const restoreManualSelection = (): void => {
       const esc = (v: string): string => String(v || "").replace(/'/g, "''");
       const clauses: string[] = [
         `Requester/EMail eq '${esc(myEmail)}'`,
-        `WorkflowStatus ne 'Failed'` // 🚫 Exclude Failed records
+        `WorkflowStatus ne 'Failed'`
       ];
 
       if (statusSelected.length > 0) {
         const statusTerms: string[] = [];
-
         statusSelected.forEach((status) => {
           const key = canonicalizeStatusFilterKey(status);
-
           if (key === canonicalizeStatusFilterKey("Pending")) {
-            // ✅ ONLY Pending
             statusTerms.push(`WorkflowStatus eq 'Pending'`);
-          }
-          else if (key === canonicalizeStatusFilterKey("In Approval")) {
-            // ✅ ONLY In Approval
+          } else if (key === canonicalizeStatusFilterKey("In Approval")) {
             statusTerms.push(`WorkflowStatus eq 'In Approval'`);
-          }
-          else if (key === canonicalizeStatusFilterKey("Submitted")) {
-            // ✅ ONLY Submitted
+          } else if (key === canonicalizeStatusFilterKey("Submitted")) {
             statusTerms.push(`WorkflowStatus eq 'Submitted'`);
-          }
-          else if (key === canonicalizeStatusFilterKey("Approved")) {
+          } else if (key === canonicalizeStatusFilterKey("Approved")) {
             statusTerms.push(`WorkflowStatus eq 'Approved'`);
-          }
-          else if (key === canonicalizeStatusFilterKey("Rejected")) {
+          } else if (key === canonicalizeStatusFilterKey("Rejected")) {
             statusTerms.push(`WorkflowStatus eq 'Rejected'`);
-          }
-          else if (key === canonicalizeStatusFilterKey("Draft")) {
+          } else if (key === canonicalizeStatusFilterKey("Draft")) {
             statusTerms.push(`WorkflowStatus eq 'Draft'`);
           }
         });
-
-        // ✅ Remove duplicates safely
         const uniqueTerms = Array.from(new Set(statusTerms));
-
-        // ✅ Apply filter
         if (uniqueTerms.length > 0) {
           clauses.push(`(${uniqueTerms.join(" or ")})`);
         }
@@ -483,7 +482,6 @@ const restoreManualSelection = (): void => {
         nextUrl = json["@odata.nextLink"];
       }
 
-      // ✅ Extract mappedRows as a named variable
       const mappedRows: Row[] = (allItems || []).map((it) => {
         const workflowStatus = String(it.WorkflowStatus || "Submitted");
         const isPending = workflowStatus.trim().toLowerCase() === "pending";
@@ -515,9 +513,9 @@ const restoreManualSelection = (): void => {
           purpose: it.Purpose?.Title || "",
           purposeDetail: it.PurposeDetails || "",
           costCenter: it.CostCenter?.Title || "",
-          submitted: formatDateDdMmYyyy(it.RequestSubmittedOn),
-          approved: formatDateDdMmYyyy(it.FinalDecisionDate),
-          expected: formatDateDdMmYyyy(it.ExpectedDeliveryDate),
+          submitted: formatDateDdMmYyyySp(it.RequestSubmittedOn),
+          approved: formatDateDdMmYyyySp(it.FinalDecisionDate),
+          expected: formatDateDdMmYyyySp(it.ExpectedDeliveryDate),
           qty: Number(it.TotalQuantity || 0),
           price: Number(it.TotalAmount || 0),
           spId: it.Id,
@@ -529,57 +527,170 @@ const restoreManualSelection = (): void => {
         };
       });
 
-      setRows(mappedRows);      // ✅ existing
-      setAllRows(mappedRows);   // ✅ ADD — only set on first load (no filters active)
+      // ✅ CHANGED: Deduplicate — keep only latest record per spId, then per transaction ID
+      const seenSpIds = new Set<number>();
+      const uniqueBySpId = mappedRows.filter((r) => {
+        if (seenSpIds.has(r.spId)) return false;
+        seenSpIds.add(r.spId);
+        return true;
+      });
+      // For non-draft rows with same transaction ID, keep only highest spId (latest)
+      const txMap = new Map<string, Row>();
+      const drafts: Row[] = [];
+      for (const r of uniqueBySpId) {
+        if (r.status.trim().toLowerCase() === "draft" || r.id === "-") {
+          drafts.push(r);
+        } else {
+          const existing = txMap.get(r.id);
+          if (!existing || r.spId > existing.spId) {
+            txMap.set(r.id, r);
+          }
+        }
+      }
+      const deduped = drafts.concat(Array.from(txMap.values()));
+
+      setRows(deduped);
+      setAllRows(deduped);
+
+
       setPageIndex(0);
 
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load data");
     } finally {
-      setLoading(false);
-      setTableLoading(false);
+      if (!silent) {
+
+        setLoading(false);
+        setTableLoading(false);
+      }
       setHasLoadedOnce(true);
     }
+
   }, [
     context,
     hasLoadedOnce,
   ]);
 
   React.useEffect(() => {
-    loadAll().catch(console.error);
-  }, []); // ✅ ONLY ONCE
+    loadAll(false).catch(console.error);
+  }, [loadAll]);
 
+
+  const getApprovedRejectedCounts = React.useCallback(async (): Promise<{
+    approved: number;
+    rejected: number;
+    draft: number;          // ✅ ADD THIS
+  }> => {
+    const siteUrl = context.pageContext.web.absoluteUrl;
+    const myEmail = String(context.pageContext.user.email || "").replace(/'/g, "''");
+
+    const buildUrl = (status: string): string =>
+      `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items` +
+      `?$select=Id,Requester/EMail` +
+      `&$filter=Requester/EMail eq '${myEmail}' and WorkflowStatus eq '${status}'` +
+      `&$expand=Requester` +
+      `&$top=5000`;
+
+    const fetchCount = async (status: string): Promise<number> => {
+      const res: SPHttpClientResponse = await context.spHttpClient.get(
+        buildUrl(status),
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            Accept: "application/json;odata=nometadata",
+            "odata-version": "",
+          },
+        }
+      );
+      if (!res.ok) throw new Error(`Failed to fetch ${status} count`);
+      const data = await res.json();
+      return (data?.value?.length ?? 0) as number;
+    };
+
+    // ✅ Fetch all 3 concurrently
+    const [approved, rejected, draft] = await Promise.all([
+      fetchCount("Approved"),
+      fetchCount("Rejected"),
+      fetchCount("Draft"),   // ✅ ADD THIS
+    ]);
+
+    return { approved, rejected, draft };
+  }, [context]);
+
+  /* ── 3. Compare counts, re-render + reload if increased ── */
+  const checkAndUpdateCounts = React.useCallback(
+    async (isInitialLoad: boolean): Promise<void> => {
+      try {
+        const { approved: currentApproved, rejected: currentRejected, draft: currentDraft } =
+          await getApprovedRejectedCounts();
+
+        const prevApproved = Number(localStorage.getItem(STORAGE_KEY_APPROVED) ?? 0);
+        const prevRejected = Number(localStorage.getItem(STORAGE_KEY_REJECTED) ?? 0);
+        const prevDraft = Number(localStorage.getItem(STORAGE_KEY_DRAFT) ?? 0);
+
+        const hasIncreased =
+          !isInitialLoad &&
+          (
+            currentApproved > prevApproved ||
+            currentRejected > prevRejected ||
+            currentDraft > prevDraft        // ✅ ADD draft comparison
+          );
+
+        if (hasIncreased) {
+          setCountIncreased((prev) => !prev);
+          await loadAll(true);
+        }
+
+        // ✅ Always persist all 3 counts
+        localStorage.setItem(STORAGE_KEY_APPROVED, String(currentApproved));
+        localStorage.setItem(STORAGE_KEY_REJECTED, String(currentRejected));
+        localStorage.setItem(STORAGE_KEY_DRAFT, String(currentDraft));   // ✅ ADD
+
+      } catch (err) {
+        console.error("[MyRequestsPage] checkAndUpdateCounts error:", err);
+      }
+    },
+    [getApprovedRejectedCounts, loadAll]
+  );
+
+  React.useEffect(() => {
+    checkAndUpdateCounts(true).catch(console.error);  // initial — no re-render
+
+    const intervalId = setInterval(() => {
+      checkAndUpdateCounts(false).catch(console.error); // poll — re-renders if increased
+    }, 2 * 60 * 1000); // 3 minutes
+
+    return () => clearInterval(intervalId);
+  }, [checkAndUpdateCounts]);
 
 
   /* ================= COLUMNS ================= */
 
   const columns = [
     {
-  key: "id",
-  header: "Transaction<br/>ID",
-  thClassName: "w-[10%]",
-  tdClassName: "w-[10%] truncate",
-  render: (r: Row) =>
-    r.id === "-" || r.id === " " || r.id === "" ? (
-      // ✅ Show empty for Pending rows (id is "-")
-      <span></span>
-    ) : r.status === "Draft" ? (
-      <button
-        className="text-[#0a66d8] underline truncate max-w-full block"
-        onClick={() => props.onOpenDraft(r.spId)}
-      >
-        {r.id}
-      </button>
-    ) : (
-      <button
-        className="text-[#0a66d8] underline truncate max-w-full block"
-        onClick={() => props.onOpenExportPdf(r.spId)}
-      >
-        {r.id}
-      </button>
-    ),
-},
-
+      key: "id",
+      header: "Transaction<br/>ID",
+      thClassName: "w-[12%]",
+      tdClassName: "w-[12%] truncate",
+      render: (r: Row) =>
+        r.id === "-" || r.id === " " || r.id === "" ? (
+          <span></span>
+        ) : r.status === "Draft" ? (
+          <button
+            className="text-[#0a66d8] underline truncate max-w-full block"
+            onClick={() => props.onOpenDraft(r.spId)}
+          >
+            {r.id}
+          </button>
+        ) : (
+          <button
+            className="text-[#0a66d8] underline truncate max-w-full block"
+            onClick={() => props.onOpenExportPdf(r.spId)}
+          >
+            {r.id}
+          </button>
+        ),
+    },
     {
       key: "status",
       header: "Status",
@@ -587,7 +698,6 @@ const restoreManualSelection = (): void => {
       tdClassName: "w-[7%]",
       render: (r: Row) => <StatusPill status={r.status} />,
     },
-
     {
       key: "requestor",
       header: "Requestor<br/>Name",
@@ -597,7 +707,6 @@ const restoreManualSelection = (): void => {
         <CellText value={r.requestor === "-" ? "" : r.requestor} maxWidth="max-w-full" />
       ),
     },
-
     {
       key: "approver",
       header: "Approver<br/>Name",
@@ -607,7 +716,6 @@ const restoreManualSelection = (): void => {
         <CellText value={r.status === "Approved" || r.status === "Rejected" ? (r.approver === "-" ? "" : r.approver) : ""} maxWidth="max-w-full" />
       ),
     },
-
     {
       key: "purpose",
       header: "Purpose",
@@ -617,7 +725,6 @@ const restoreManualSelection = (): void => {
         <CellText value={r.purpose === "-" ? "" : r.purpose} maxWidth="max-w-full" />
       ),
     },
-
     {
       key: "purposedetails",
       header: "Purpose<br/>Detail",
@@ -627,7 +734,6 @@ const restoreManualSelection = (): void => {
         <CellText value={r.purposeDetail === "-" ? "" : r.purposeDetail} maxWidth="max-w-full" />
       ),
     },
-
     {
       key: "costCenter",
       header: "Cost<br/>Center",
@@ -637,7 +743,6 @@ const restoreManualSelection = (): void => {
         <CellText value={r.costCenter === "-" ? "" : r.costCenter} maxWidth="max-w-full" />
       ),
     },
-
     {
       key: "submitted",
       header: "Submitted<br/>Date",
@@ -645,7 +750,6 @@ const restoreManualSelection = (): void => {
       tdClassName: "w-[7%] whitespace-nowrap",
       render: (r: Row) => (r.submitted === "-" ? "" : r.submitted),
     },
-
     {
       key: "approved",
       header: "Approved<br/>Date",
@@ -653,7 +757,6 @@ const restoreManualSelection = (): void => {
       tdClassName: "w-[7%] whitespace-nowrap",
       render: (r: Row) => (r.approved === "-" ? "" : r.approved),
     },
-
     {
       key: "expected",
       header: "Expected<br/>Delivery Date",
@@ -661,7 +764,6 @@ const restoreManualSelection = (): void => {
       tdClassName: "w-[7%] whitespace-nowrap",
       render: (r: Row) => (r.expected === "-" ? "" : r.expected),
     },
-
     {
       key: "qty",
       header: "Total<br/>Quantity",
@@ -669,7 +771,6 @@ const restoreManualSelection = (): void => {
       tdClassName: "w-[5%] whitespace-nowrap text-left",
       render: (r: Row) => r.qty,
     },
-
     {
       key: "price",
       header: "Total Tag<br/>Price",
@@ -678,10 +779,9 @@ const restoreManualSelection = (): void => {
       render: (r: Row) =>
         Number(r.price).toLocaleString(undefined, {
           minimumFractionDigits: 2,
-          maximumFractionDigits: 2
+          maximumFractionDigits: 2,
         }),
     },
-
     {
       key: "export",
       header: "Export<br/>Request",
@@ -697,7 +797,7 @@ const restoreManualSelection = (): void => {
         return (
           <div className="flex justify-start">
             <button
-              className=" w-full max-w-[80px] rounded-md  bg-[#F6F6F6] px-1.5 py-1.5 text-[9px] font-semibold whitespace-nowrap text-[#81AFEB] border border-[#EBEBEB] hover:bg-[#F0F7FF] hover:border hover:border-[#2172DA] hover:text-blue-400"
+              className="w-full max-w-[80px] rounded-md bg-[#F6F6F6] px-1.5 py-1.5 text-[9px] font-semibold whitespace-nowrap text-[#81AFEB] border border-[#EBEBEB] hover:bg-[#F0F7FF] hover:border hover:border-[#2172DA] hover:text-blue-400"
               onClick={() => props.onDownloadPdf(r.spId)}
             >
               Export .PDF
@@ -707,7 +807,8 @@ const restoreManualSelection = (): void => {
       },
     },
   ];
-  // Load Purpose & Cost Center from master lists (same source as Create Request)
+
+  // Load Purpose & Cost Center from master lists
   const [purposeOptions, setPurposeOptions] = React.useState<string[]>([]);
   const [costCenterOptions, setCostCenterOptions] = React.useState<string[]>([]);
 
@@ -715,7 +816,6 @@ const restoreManualSelection = (): void => {
     const siteUrl = context.pageContext.web.absoluteUrl;
     const email = context.pageContext.user.email.replace(/'/g, "''");
 
-    // Load Purpose from PurposeMaster
     context.spHttpClient.get(
       `${siteUrl}/_api/web/lists/getbytitle('PurposeMaster')/items?$top=5000&$select=Title&$filter=IsActive eq 1&$orderby=Title asc`,
       SPHttpClient.configurations.v1
@@ -724,7 +824,6 @@ const restoreManualSelection = (): void => {
       setPurposeOptions(dedupeLabels(titles));
     }).catch(() => undefined);
 
-    // Get department ID from EForm Users (same as Create Request page)
     context.spHttpClient.get(
       `${siteUrl}/_api/web/lists/getbytitle('EForm%20Users')/items?$top=1&$select=Department/Id&$expand=Department&$filter=Email eq '${email}'`,
       SPHttpClient.configurations.v1
@@ -741,10 +840,11 @@ const restoreManualSelection = (): void => {
     }).catch(() => undefined);
   }, []);
 
+  // ✅ CHANGED: Removed "Pending" from statusOptions
   const statusOptions = React.useMemo(
     () =>
       dedupeLabels(
-        ["Approved", "Rejected", "Submitted", "Draft", "Pending"],
+        ["Approved", "Rejected", "Submitted", "Draft"],
         canonicalizeStatusFilterKey
       ),
     []
@@ -767,7 +867,7 @@ const restoreManualSelection = (): void => {
 
       {!loading && (
         <div className="pdf-thai relative flex h-full flex-col">
-          {/* âœ… HEADER â€“ ALWAYS SHOWN */}
+          {/* HEADER — ALWAYS SHOWN */}
           <div className="relative shrink-0 sticky top-0 z-20 bg-[#f5f5f5]">
             {toast && (
               <div className="absolute top-3 left-0 right-0 z-[40]">
@@ -814,13 +914,12 @@ const restoreManualSelection = (): void => {
               </div>
             )}
 
-            {/* âœ… HEADER â€“ ALWAYS SHOWN */}
             <MyRequestHeader
               onCreate={props.onCreate}
               selectedCount={selectedIds.length}
               onSelectAllRequests={selectAllFilteredRows}
               onRestoreManualSelection={restoreManualSelection}
-                manualSelectedCount={manualSelectedIds.length}  
+              manualSelectedCount={manualSelectedIds.length}
               onExportExcel={async (mode) => {
                 if (!canExport) return;
                 const data =
@@ -837,7 +936,6 @@ const restoreManualSelection = (): void => {
                   ...r,
                   items: itemsByRequestId[r.spId] || [],
                 }));
-
                 await exportToExcel(exportRows);
               }}
               canExport={canExport}
@@ -845,13 +943,9 @@ const restoreManualSelection = (): void => {
             />
           </div>
 
-
-          {/* âœ… BODY â€“ SINGLE SCROLL CONTAINER */}
-          <div
-            className={`relative flex-1 overflow-auto bg-[#f3f3f3] py-4 px-7 sm:px-6`}
-          >
-            <div className={`space-y-6`}>
-              {/* âœ… SWITCH ONLY CONTENT */}
+          {/* BODY — SINGLE SCROLL CONTAINER */}
+          <div className="relative flex-1 overflow-auto bg-[#f3f3f3] py-4 px-7 sm:px-6">
+            <div className="space-y-6">
               {rows.length === 0 && !hasAppliedFilters ? (
                 <RequestEmptyState
                   title="Empty requests"
@@ -862,7 +956,6 @@ const restoreManualSelection = (): void => {
                 />
               ) : (
                 <>
-
                   <RequestFilterCard
                     statusOptions={statusOptions}
                     purposeOptions={purposeOptions}
@@ -889,12 +982,9 @@ const restoreManualSelection = (): void => {
                     SelectBox={SelectBox}
                   />
                   <div>
-                    {/* Title */}
                     <div className="text-[13px] font-semibold text-gray-900">
                       Request lists
                     </div>
-
-                    {/* Clock + Content */}
                     <div className="flex items-center gap-2 mt-1">
                       <svg
                         width="14"
@@ -916,8 +1006,7 @@ const restoreManualSelection = (): void => {
                     </div>
                   </div>
 
-
-                  <div className={`${card} overflow-hidden`}>
+                  <div key={String(countIncreased)} className={`${card} overflow-hidden`}>
                     <div className="px-4 py-3 flex items-center justify-between border-b border-[#eeeeee]">
                       <RequestSearchBar
                         searchDraft={searchDraft}
@@ -937,9 +1026,9 @@ const restoreManualSelection = (): void => {
                           setPageIndex(0);
                         }}
                       />
-
+                      {/* ✅ CHANGED: onClick uses setIsSorted toggle */}
                       <button
-                        onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+                        onClick={() => setSortState((prev) => prev === 0 ? 1 : 0)}
                         className="inline-flex h-7 items-center gap-1.5 rounded-md border border-gray-200 bg-gray-100 px-2.5 text-[12px] font-medium text-gray-800 transition-colors duration-200 hover:bg-gray-200"
                       >
                         <svg
@@ -984,14 +1073,14 @@ const restoreManualSelection = (): void => {
                             <button
                               disabled={safePageIndex === 0}
                               onClick={() => setPageIndex(0)}
-                              className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-[12px] font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-500" >
+                              className="rounded-md border border-gray-300 bg-[#FFFFFF] px-2.5 py-1 text-[12px] font-medium text-[#2172DA] hover:bg-[#2172DA] hover:text-white disabled:cursor-not-allowed disabled:border-[#D9D9D9] disabled:bg-[#D9D9D9] disabled:text-gray-500" >
                               First
                             </button>
 
                             <button
                               disabled={safePageIndex === 0}
                               onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
-                              className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-[12px] font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-500" >
+                              className="rounded-md border border-gray-300 bg-[#FFFFFF] px-2.5 py-1 text-[12px] font-medium text-[#2172DA] hover:bg-[#2172DA] hover:text-white disabled:cursor-not-allowed disabled:border-[#D9D9D9] disabled:bg-[#D9D9D9] disabled:text-gray-500" >
                               Previous
                             </button>
 
@@ -1004,14 +1093,14 @@ const restoreManualSelection = (): void => {
                               onClick={() =>
                                 setPageIndex((p) => Math.min(totalPages - 1, p + 1))
                               }
-                              className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-[12px] font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-500">
+                              className="rounded-md border border-gray-300 bg-[#FFFFFF] px-2.5 py-1 text-[12px] font-medium text-[#2172DA] hover:bg-[#2172DA] hover:text-white disabled:cursor-not-allowed disabled:border-[#D9D9D9] disabled:bg-[#D9D9D9] disabled:text-gray-500">
                               Next
                             </button>
 
                             <button
                               disabled={safePageIndex >= totalPages - 1}
                               onClick={() => setPageIndex(totalPages - 1)}
-                              className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-[12px] font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-500" >
+                              className="rounded-md border border-gray-300 bg-[#FFFFFF] px-2.5 py-1 text-[12px] font-medium text-[#2172DA] hover:bg-[#2172DA] hover:text-white disabled:cursor-not-allowed disabled:border-[#D9D9D9] disabled:bg-[#D9D9D9] disabled:text-gray-500" >
                               Last
                             </button>
 
@@ -1023,9 +1112,9 @@ const restoreManualSelection = (): void => {
                             Showing {pageRows.length} of {sortedRows.length} items (pageSize {pageSize})
                           </div> */}
                         </div>
+
                       </>
                     )}
-
                   </div>
                 </>
               )}
@@ -1033,7 +1122,6 @@ const restoreManualSelection = (): void => {
           </div>
         </div>
       )}
-
     </>
   );
 }

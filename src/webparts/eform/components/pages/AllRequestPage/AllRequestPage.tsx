@@ -1,6 +1,4 @@
 import * as React from "react";
-import { formatDateDdMmYyyy } from "./dateUtils";
-
 import {
   AllRequestPageProps,
   InventoryRequestSPItem,
@@ -46,15 +44,15 @@ function StatusText({ status }: { status: string }): JSX.Element {
 
   // Color logic (UPDATED)
   const cls =
-  key === "approved"
-    ? "text-green-600"
-    : key === "rejected"
-      ? "text-red-600"
-      : key === "draft"
-        ? "text-gray-600" // 
-        : key === "submitted" || isInApproval
-          ? "text-blue-600"
-          : "text-gray-500";
+    key === "approved"
+      ? "text-green-600"
+      : key === "rejected"
+        ? "text-red-600"
+        : key === "draft"
+          ? "text-gray-600" // 
+          : key === "submitted" || isInApproval
+            ? "text-blue-600"
+            : "text-gray-500";
 
 
   return <span className={`font-medium ${cls}`}>{display}</span>;
@@ -110,13 +108,21 @@ export default function AllRequestPage(
   const [statusOptions, setStatusOptions] = React.useState<string[]>([]);
   const [purposeOptions, setPurposeOptions] = React.useState<string[]>([]);
   const [costCenterOptions, setCostCenterOptions] = React.useState<string[]>([]);
-const [isAllSelected, setIsAllSelected] = React.useState(false);
+  const [isAllSelected, setIsAllSelected] = React.useState(false);
+
+  const STORAGE_KEY_APPROVED = "allreq_approved_count";
+  const STORAGE_KEY_REJECTED = "allreq_rejected_count";
+  const STORAGE_KEY_SUBMITTED = "allreq_submitted_count";
+
+  // ✅ Toggles to force re-render when any count increases
+  const [countIncreased, setCountIncreased] = React.useState<boolean>(false);
+
 
   /* =====================================================
      LOAD DROPDOWN OPTIONS
   ===================================================== */
   const canExport = props.permissions?.exportAllReport === true;
-  
+
   const loadStatusOptions = async (): Promise<void> => {
     const siteUrl = context.pageContext.web.absoluteUrl;
 
@@ -130,12 +136,19 @@ const [isAllSelected, setIsAllSelected] = React.useState(false);
       ? json.Choices.map((choice: unknown) => String(choice || ""))
       : [];
     const draftKey = canonicalizeStatusFilterKey("Draft");
+    const failedKey = canonicalizeStatusFilterKey("Failed"); // ✅ ADD THIS
     const cleaned = dedupeLabels(choices, canonicalizeStatusFilterKey).filter(
-      (status) => canonicalizeStatusFilterKey(status) !== draftKey
+      (status) =>
+        canonicalizeStatusFilterKey(status) !== draftKey &&
+        canonicalizeStatusFilterKey(status) !== failedKey // ✅ ADD THIS
     );
     setStatusOptions(cleaned);
     setStatusFilter((prev) =>
-      prev.filter((status) => canonicalizeStatusFilterKey(status) !== draftKey)
+      prev.filter(
+        (status) =>
+          canonicalizeStatusFilterKey(status) !== draftKey &&
+          canonicalizeStatusFilterKey(status) !== failedKey // ✅ ADD THIS
+      )
     );
   };
 
@@ -186,15 +199,15 @@ const [isAllSelected, setIsAllSelected] = React.useState(false);
   ===================================================== */
 
   const filteredRows: Row[] = React.useMemo(() => {
-    
+
 
     const out: Row[] = [...rows];
 
     out.sort((a, b) => {
-    // Sort by transaction ID
-    const cmp = a.id.localeCompare(b.id, undefined, { numeric: true });
-    return sortDir === "asc" ? cmp : -cmp;
-  });
+      // Sort by transaction ID
+      const cmp = a.id.localeCompare(b.id, undefined, { numeric: true });
+      return sortDir === "asc" ? cmp : -cmp;
+    });
 
     return out;
   }, [
@@ -223,54 +236,54 @@ const [isAllSelected, setIsAllSelected] = React.useState(false);
      SELECTION LOGIC (UNCHANGED)
   ===================================================== */
 
-const handleToggleRow = (id: string | number): void => {
-  const idStr = String(id);
-  setIsAllSelected(false); // exit "all selected" mode
-  setSelectedIds((prev) => {
-    const updated = prev.includes(idStr)
-      ? prev.filter((x) => x !== idStr)
-      : [...prev, idStr];
-    setManualSelectedIds(updated);
-    return updated;
-  });
-};
+  const handleToggleRow = (id: string | number): void => {
+    const idStr = String(id);
+    setIsAllSelected(false); // exit "all selected" mode
+    setSelectedIds((prev) => {
+      const updated = prev.includes(idStr)
+        ? prev.filter((x) => x !== idStr)
+        : [...prev, idStr];
+      setManualSelectedIds(updated);
+      return updated;
+    });
+  };
 
 
   const handleToggleAll = (): void => {
-  if (isAllSelected) {
-    
+    if (isAllSelected) {
+
+      setIsAllSelected(false);
+      setSelectedIds([]);
+      setManualSelectedIds([]);
+      return;
+    }
+
+    const pageIds: string[] = pageRows.map((r) => String(r.id));
+    const allSelected: boolean = pageIds.every((id) => selectedIds.includes(id));
+
+    if (allSelected) {
+      const updated = selectedIds.filter((id) => !pageIds.includes(id));
+      setSelectedIds(updated);
+      setManualSelectedIds(updated);
+    } else {
+      const updated = [...selectedIds, ...pageIds.filter((id) => !selectedIds.includes(id))];
+      setSelectedIds(updated);
+      setManualSelectedIds(updated);
+    }
+  };
+
+  const onSelectAllRequests = (): void => {
+    const ids = filteredRows.map((r) => String(r.id));
+    setSelectedIds(ids);
+    setManualSelectedIds(ids);
+    setIsAllSelected(true);
+  };
+
+  //  onRestoreManualSelection
+  const onRestoreManualSelection = (): void => {
     setIsAllSelected(false);
-    setSelectedIds([]);
-    setManualSelectedIds([]);
-    return;
-  }
-
-  const pageIds: string[] = pageRows.map((r) => String(r.id));
-  const allSelected: boolean = pageIds.every((id) => selectedIds.includes(id));
-
-  if (allSelected) {
-    const updated = selectedIds.filter((id) => !pageIds.includes(id));
-    setSelectedIds(updated);
-    setManualSelectedIds(updated);
-  } else {
-    const updated = [...selectedIds, ...pageIds.filter((id) => !selectedIds.includes(id))];
-    setSelectedIds(updated);
-    setManualSelectedIds(updated);
-  }
-};
-
-const onSelectAllRequests = (): void => {
-  const ids = filteredRows.map((r) => String(r.id));
-  setSelectedIds(ids);
-  setManualSelectedIds(ids);
-  setIsAllSelected(true); 
-};
-
-//  onRestoreManualSelection
-const onRestoreManualSelection = (): void => {
-  setIsAllSelected(false);
-  setSelectedIds(manualSelectedIds);
-};
+    setSelectedIds(manualSelectedIds);
+  };
 
 
   type InventoryRequestItemForExport = {
@@ -370,15 +383,27 @@ const onRestoreManualSelection = (): void => {
     [context]
   );
 
+  function formatDateDdMmYyyy(iso: string | undefined): string {
+    if (!iso) return "-";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "-";
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Bangkok",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(d); // Returns "DD/MM/YYYY" in Bangkok time
+  }
+
   const onExportExcel = async (mode: "all" | "selected") => {
-      if (!canExport) return;
- 
+    if (!canExport) return;
+
     const data =
       mode === "all"
         ? filteredRows
         : filteredRows.filter((r) =>
-            manualSelectedIds.includes(String(r.id))
-          );
+          manualSelectedIds.includes(String(r.id))
+        );
 
     if (data.length === 0) {
       setError("No rows selected to export.");
@@ -405,208 +430,195 @@ const onRestoreManualSelection = (): void => {
   /* =====================================================
      LOAD DATA
   ===================================================== */
-
-  const loadAll = React.useCallback(async (): Promise<void> => {
-  setError("");
-  if (!hasLoadedOnce) {
-    setLoadingPage(true);
-  } else {
-    setTableLoading(true);
-  }
-
-  try {
-    const siteUrl = context.pageContext.web.absoluteUrl;
-    const esc = (v: string): string => String(v || "").replace(/'/g, "''");
-    const clauses: string[] = [`WorkflowStatus ne 'Draft' and WorkflowStatus ne 'Pending' and WorkflowStatus ne 'Failed'`];
-
-    if (statusFilter.length > 0) {
-      const statusTerms: string[] = [];
-      const draftKey = canonicalizeStatusFilterKey("Draft");
-      statusFilter.forEach((status) => {
-        const key = canonicalizeStatusFilterKey(status);
-        if (key === draftKey) {
-          return;
-        }
-        if (key === canonicalizeStatusFilterKey("Pending")) {
-          statusTerms.push(`WorkflowStatus eq 'Pending'`);
-          statusTerms.push(`WorkflowStatus eq 'In Approval'`);
-        } else {
-          statusTerms.push(`WorkflowStatus eq '${esc(status)}'`);
-        }
-      });
-      if (statusTerms.length > 0) {
-        clauses.push(`(${Array.from(new Set(statusTerms)).join(" or ")})`);
+  const loadAll = React.useCallback(async (silent: boolean = false): Promise<void> => {
+    if (!silent) {
+      if (!hasLoadedOnce) {
+        setLoadingPage(true);
+      } else {
+        setTableLoading(true);
       }
     }
 
-    if (purposeFilter.length > 0) {
-      const purposeTerms = purposeFilter.map((p) => `Purpose/Title eq '${esc(p)}'`);
-      clauses.push(`(${purposeTerms.join(" or ")})`);
-    }
+    try {
+      const siteUrl = context.pageContext.web.absoluteUrl;
+      const esc = (v: string): string => String(v || "").replace(/'/g, "''");
+      const clauses: string[] = [`WorkflowStatus ne 'Draft' and WorkflowStatus ne 'Pending' and WorkflowStatus ne 'Failed'`];
 
-    if (costCenterFilter.length > 0) {
-      const ccTerms = costCenterFilter.map((c) => `CostCenter/Title eq '${esc(c)}'`);
-      clauses.push(`(${ccTerms.join(" or ")})`);
-    }
-
-    if (expectedFrom) {
-      clauses.push(`ExpectedDeliveryDate ge datetime'${expectedFrom}T00:00:00Z'`);
-    }
-    if (expectedTo) {
-      clauses.push(`ExpectedDeliveryDate le datetime'${expectedTo}T23:59:59Z'`);
-    }
-
-    if (searchText.trim()) {
-      const q = esc(searchText.trim());
-      clauses.push(`(substringof('${q}',Title) or substringof('${q}',Requester/Title))`);
-    }
-
-    // ✅ Your same query (Department is Lookup)
-    const firstUrl =
-      `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items` +
-      `?$top=5000` +
-      `&$orderby=Id desc` +
-      `&$filter=${clauses.join(" and ")}` +
-      `&$select=` +
-      [
-        "Id",
-        "RequestNumber",
-        "Title",
-        "Department/Title",
-        "WorkflowStatus",
-        "TotalQuantity",
-        "ApproverNames",
-        "TotalAmount",
-        "PurposeDetails",
-        "RequestSubmittedOn",
-        "FinalDecisionDate",
-        "ExpectedDeliveryDate",
-        "Modified",
-        "Requester/Title",
-        "CurrentApprover/Title",
-        "Purpose/Title",
-        "CostCenter/Title",
-        "MultipleApproverData", 
-      ].join(",") +
-      `&$expand=` +
-      ["Requester", "CurrentApprover", "Purpose", "CostCenter", "Department"].join(",");
-
-    // ✅ Fetch all pages using @odata.nextLink
-    const reqItems: InventoryRequestSPItem[] = [];
-    let nextUrl: string | undefined = firstUrl;
-
-    while (nextUrl) {
-      const res: SPHttpClientResponse = await context.spHttpClient.get(
-        nextUrl,
-        SPHttpClient.configurations.v1,
-        {
-          headers: {
-            Accept: "application/json;odata=nometadata",
-            'odata-version': ''
-          },
+      if (statusFilter.length > 0) {
+        const statusTerms: string[] = [];
+        const draftKey = canonicalizeStatusFilterKey("Draft");
+        statusFilter.forEach((status) => {
+          const key = canonicalizeStatusFilterKey(status);
+          if (key === draftKey) {
+            return;
+          }
+          if (key === canonicalizeStatusFilterKey("Pending")) {
+            statusTerms.push(`WorkflowStatus eq 'Pending'`);
+            statusTerms.push(`WorkflowStatus eq 'In Approval'`);
+          } else {
+            statusTerms.push(`WorkflowStatus eq '${esc(status)}'`);
+          }
+        });
+        if (statusTerms.length > 0) {
+          clauses.push(`(${Array.from(new Set(statusTerms)).join(" or ")})`);
         }
+      }
+
+      if (purposeFilter.length > 0) {
+        const purposeTerms = purposeFilter.map((p) => `Purpose/Title eq '${esc(p)}'`);
+        clauses.push(`(${purposeTerms.join(" or ")})`);
+      }
+
+      if (costCenterFilter.length > 0) {
+        const ccTerms = costCenterFilter.map((c) => `CostCenter/Title eq '${esc(c)}'`);
+        clauses.push(`(${ccTerms.join(" or ")})`);
+      }
+
+      if (expectedFrom) {
+        clauses.push(`ExpectedDeliveryDate ge datetime'${expectedFrom}T00:00:00Z'`);
+      }
+      if (expectedTo) {
+        clauses.push(`ExpectedDeliveryDate le datetime'${expectedTo}T23:59:59Z'`);
+      }
+
+      if (searchText.trim()) {
+        const q = esc(searchText.trim());
+        clauses.push(`(substringof('${q}',Title) or substringof('${q}',Requester/Title))`);
+      }
+
+      // ✅ Your same query (Department is Lookup)
+      const firstUrl =
+        `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items` +
+        `?$top=5000` +
+        `&$orderby=Id desc` +
+        `&$filter=${clauses.join(" and ")}` +
+        `&$select=` +
+        [
+          "Id",
+          "RequestNumber",
+          "Title",
+          "Department/Title",
+          "WorkflowStatus",
+          "TotalQuantity",
+          "ApproverNames",
+          "TotalAmount",
+          "PurposeDetails",
+          "RequestSubmittedOn",
+          "FinalDecisionDate",
+          "ExpectedDeliveryDate",
+          "Modified",
+          "Requester/Title",
+          "CurrentApprover/Title",
+          "Purpose/Title",
+          "CostCenter/Title",
+          "MultipleApproverData",
+        ].join(",") +
+        `&$expand=` +
+        ["Requester", "CurrentApprover", "Purpose", "CostCenter", "Department"].join(",");
+
+      // ✅ Fetch all pages using @odata.nextLink
+      const reqItems: InventoryRequestSPItem[] = [];
+      let nextUrl: string | undefined = firstUrl;
+
+      while (nextUrl) {
+        const res: SPHttpClientResponse = await context.spHttpClient.get(
+          nextUrl,
+          SPHttpClient.configurations.v1,
+          {
+            headers: {
+              Accept: "application/json;odata=nometadata",
+              'odata-version': ''
+            },
+          }
+        );
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`SharePoint request failed (${res.status}): ${text}`);
+        }
+
+        const json: any = await res.json();
+
+        // With odata=nometadata, items are usually in "value"
+        const batch: any[] = Array.isArray(json?.value) ? json.value : [];
+        reqItems.push(...(batch as InventoryRequestSPItem[]));
+
+        // Next link name can vary depending on metadata mode
+        nextUrl =
+          json?.["@odata.nextLink"] ||
+          json?.["odata.nextLink"] ||
+          json?.d?.__next ||
+          undefined;
+      }
+
+
+      const mapped: Row[] = reqItems.map((it: any) => {
+        const workflowStatus = String(it.WorkflowStatus ?? "Submitted");
+        const isPending = workflowStatus.trim().toLowerCase() === "pending";
+        const titleTxId = String(it?.Title || "").trim();
+        const hasFinalTitle =
+          !!titleTxId &&
+          !/^draft$/i.test(titleTxId) &&
+          !/^temp$/i.test(titleTxId);
+
+        return {
+          id: isPending
+            ? "-"
+            : hasFinalTitle
+              ? titleTxId
+              : it?.RequestNumber
+                ? String(it.RequestNumber)
+                : String(it?.Id || ""),
+          status: workflowStatus as Status,
+          requestor: it.Requester?.Title ?? "-",
+          approver: it.ApproverNames,
+          department: it.Department?.Title ?? "-", // ✅ lookup title
+          purpose: it.Purpose?.Title ?? "-",
+          PurposeDetails: it.PurposeDetails ?? "-",
+          costCenter: it.CostCenter?.Title ?? "-",
+          submitted: formatDateDdMmYyyy(it.RequestSubmittedOn),
+          approved: formatDateDdMmYyyy(it.FinalDecisionDate),
+          expected: formatDateDdMmYyyy(it.ExpectedDeliveryDate),
+          qty: Number(it.TotalQuantity ?? 0),
+          price: Number(it.TotalAmount ?? 0),
+          spId: it.Id,
+          expectedIso: it.ExpectedDeliveryDate,
+          submittedIso: it.RequestSubmittedOn,
+          modifiedIso: it.Modified,
+          lastActivityIso: it.Modified || it.RequestSubmittedOn || "",
+        };
+      }).filter((row) =>
+        canonicalizeStatusFilterKey(String(row.status || "")) !==
+        canonicalizeStatusFilterKey("Draft")
       );
 
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`SharePoint request failed (${res.status}): ${text}`);
+      setRows(mapped);
+      setPageIndex(0);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load data.");
+      setRows([]);
+      setPageIndex(0);
+    } finally {
+      if (!silent) {
+
+        setLoadingPage(false);
+        setTableLoading(false);
       }
-
-      const json: any = await res.json();
-
-      // With odata=nometadata, items are usually in "value"
-      const batch: any[] = Array.isArray(json?.value) ? json.value : [];
-      reqItems.push(...(batch as InventoryRequestSPItem[]));
-
-      // Next link name can vary depending on metadata mode
-      nextUrl =
-        json?.["@odata.nextLink"] ||
-        json?.["odata.nextLink"] ||
-        json?.d?.__next ||
-        undefined;
+      setHasLoadedOnce(true);
     }
-    // ✅ Extract the name of who actually acted (stage with a Date) from MultipleApproverData
-// const getActedApproverName = (multipleApproverDataRaw: unknown, workflowStatus: string): string | null => {
-//   const status = workflowStatus.trim().toLowerCase();
-//   // Still in progress — show CurrentApprover (next pending)
-//   if (status !== "approved" && status !== "rejected") return null;
-//   if (!multipleApproverDataRaw) return null;
-//   let parsed: unknown = multipleApproverDataRaw;
-//   if (typeof multipleApproverDataRaw === "string") {
-//     try { parsed = JSON.parse(multipleApproverDataRaw); } catch { return null; }
-//   }
-//   if (!parsed || typeof parsed !== "object") return null;
-//   const p = parsed as { stages?: Array<Record<string, unknown>> };
-//   const stages = Array.isArray(p.stages) ? p.stages : [];
-//   const actedStage = stages.find((s) => !!String(s.Date ?? s.date ?? "").trim());
-//   if (!actedStage) return null;
-//   return String(actedStage.approverName ?? actedStage.ApproverName ?? "").trim() || null;
-// };
-
-    const mapped: Row[] = reqItems.map((it: any) => {
-      const workflowStatus = String(it.WorkflowStatus ?? "Submitted");
-      const isPending = workflowStatus.trim().toLowerCase() === "pending";
-      const titleTxId = String(it?.Title || "").trim();
-      const hasFinalTitle =
-        !!titleTxId &&
-        !/^draft$/i.test(titleTxId) &&
-        !/^temp$/i.test(titleTxId);
-
-      return {
-      id: isPending
-        ? "-"
-        : hasFinalTitle
-          ? titleTxId
-          : it?.RequestNumber
-            ? String(it.RequestNumber)
-            : String(it?.Id || ""),
-      status: workflowStatus as Status,
-      requestor: it.Requester?.Title ?? "-",
-     approver:  it.ApproverNames,
-      department: it.Department?.Title ?? "-", // ✅ lookup title
-      purpose: it.Purpose?.Title ?? "-",
-      PurposeDetails: it.PurposeDetails ?? "-",
-      costCenter: it.CostCenter?.Title ?? "-",
-      submitted: formatDateDdMmYyyy(it.RequestSubmittedOn),
-      approved: formatDateDdMmYyyy(it.FinalDecisionDate),
-      expected: formatDateDdMmYyyy(it.ExpectedDeliveryDate),
-      qty: Number(it.TotalQuantity ?? 0),
-      price: Number(it.TotalAmount ?? 0),
-      spId: it.Id,
-      expectedIso: it.ExpectedDeliveryDate,
-      submittedIso: it.RequestSubmittedOn,
-      modifiedIso: it.Modified,
-      lastActivityIso: it.Modified || it.RequestSubmittedOn || "",
-    };
-  }).filter((row) =>
-    canonicalizeStatusFilterKey(String(row.status || "")) !==
-    canonicalizeStatusFilterKey("Draft")
-  );
-
-    setRows(mapped);
-    setPageIndex(0);
-  } catch (e: unknown) {
-    setError(e instanceof Error ? e.message : "Failed to load data.");
-    setRows([]);
-    setPageIndex(0);
-  } finally {
-    setLoadingPage(false);
-    setTableLoading(false);
-    setHasLoadedOnce(true);
-  }
-}, [
-  context,
-  hasLoadedOnce,
-  statusFilter,
-  purposeFilter,
-  costCenterFilter,
-  expectedFrom,
-  expectedTo,
-  searchText,
-]);
+  }, [
+    context,
+    hasLoadedOnce,
+    statusFilter,
+    purposeFilter,
+    costCenterFilter,
+    expectedFrom,
+    expectedTo,
+    searchText,
+  ]);
 
   React.useEffect(() => {
-    loadAll().catch(console.error);
+    loadAll(false).catch(console.error);
   }, [loadAll]);
 
   React.useEffect(() => {
@@ -614,6 +626,96 @@ const onRestoreManualSelection = (): void => {
     loadPurposeOptions().catch(() => undefined);
     loadCostCenterOptions().catch(() => undefined);
   }, []);
+
+  // ✅ FIXED — no user filter, counts ALL records across all users
+const getApprovedRejectedCounts = React.useCallback(async (): Promise<{
+  approved: number;
+  rejected: number;
+  submitted: number;
+}> => {
+  const siteUrl = context.pageContext.web.absoluteUrl;
+
+  // ✅ No Requester/EMail filter — AllRequestPage sees ALL users' records
+  const buildUrl = (status: string): string =>
+    `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items` +
+    `?$select=Id` +
+    `&$filter=WorkflowStatus eq '${status}'` +
+    `&$top=5000`;
+
+  const fetchCount = async (status: string): Promise<number> => {
+    const res: SPHttpClientResponse = await context.spHttpClient.get(
+      buildUrl(status),
+      SPHttpClient.configurations.v1,
+      {
+        headers: {
+          Accept: "application/json;odata=nometadata",
+          "odata-version": "",
+        },
+      }
+    );
+    if (!res.ok) throw new Error(`Failed to fetch ${status} count`);
+    const data = await res.json();
+    return (data?.value?.length ?? 0) as number;
+  };
+
+  const [approved, rejected, submitted] = await Promise.all([
+    fetchCount("Approved"),
+    fetchCount("Rejected"),
+    fetchCount("Submitted"),  // ✅ tracks new submissions from any user
+  ]);
+
+  return { approved, rejected, submitted };
+}, [context]);
+
+  /* ── 3. Compare counts, re-render + reload if increased ── */
+  const checkAndUpdateCounts = React.useCallback(
+  async (isInitialLoad: boolean): Promise<void> => {
+    try {
+      // ✅ correctly named variables matching what they actually hold
+      const {
+        approved: currentApproved,
+        rejected: currentRejected,
+        submitted: currentSubmitted,   // ✅ was wrongly named currentDraft
+      } = await getApprovedRejectedCounts();
+
+      const prevApproved  = Number(localStorage.getItem(STORAGE_KEY_APPROVED)  ?? 0);
+      const prevRejected  = Number(localStorage.getItem(STORAGE_KEY_REJECTED)  ?? 0);
+      const prevSubmitted = Number(localStorage.getItem(STORAGE_KEY_SUBMITTED) ?? 0); // ✅ correct name
+
+      const hasIncreased =
+        !isInitialLoad &&
+        (
+          currentApproved  > prevApproved  ||
+          currentRejected  > prevRejected  ||
+          currentSubmitted > prevSubmitted  // ✅ correct name
+        );
+
+      if (hasIncreased) {
+        setCountIncreased((prev) => !prev);
+        await loadAll(true);
+      }
+
+      // ✅ persist all 3 with correct variable names
+      localStorage.setItem(STORAGE_KEY_APPROVED,  String(currentApproved));
+      localStorage.setItem(STORAGE_KEY_REJECTED,  String(currentRejected));
+      localStorage.setItem(STORAGE_KEY_SUBMITTED, String(currentSubmitted)); // ✅ correct
+
+    } catch (err) {
+      console.error("[AllRequestPage] checkAndUpdateCounts error:", err);
+    }
+  },
+  [getApprovedRejectedCounts, loadAll]
+);
+
+  React.useEffect(() => {
+    checkAndUpdateCounts(true).catch(console.error);  // initial — no re-render
+
+    const intervalId = setInterval(() => {
+      checkAndUpdateCounts(false).catch(console.error); // poll — re-renders if increased
+    }, 2 * 60 * 1000); // 3 minutes
+
+    return () => clearInterval(intervalId);
+  }, [checkAndUpdateCounts]);
 
   const goFirst = () => setPageIndex(0);
   const goPrev = () => setPageIndex((p) => Math.max(0, p - 1));
@@ -633,134 +735,134 @@ const onRestoreManualSelection = (): void => {
   const isBaseEmpty = !loadingPage && !error && rows.length === 0 && !hasFiltersApplied;
   const hasAnyData = !loadingPage && !error && (rows.length > 0 || hasFiltersApplied);
 
-  
-const columns = [
-  {
-    key: "id",
-    header: "Transaction<br/>ID",
-    thClassName: "w-[11%]",
-    tdClassName: "w-[11%] truncate",
-    render: (r: Row) =>
-      r.id === "-" ? (
-        <span className="text-gray-400"></span>  // ✅ was "-"
-      ) : (
-        <button
-          className="text-[#0a66d8] underline truncate max-w-full block"
-          onClick={() => props.onOpenExportPdf(r.spId)}
-        >
-          {r.id}
-        </button>
+
+  const columns = [
+    {
+      key: "id",
+      header: "Transaction<br/>ID",
+      thClassName: "w-[11%]",
+      tdClassName: "w-[11%] truncate",
+      render: (r: Row) =>
+        r.id === "-" ? (
+          <span className="text-gray-400"></span>  // ✅ was "-"
+        ) : (
+          <button
+            className="text-[#0a66d8] underline truncate max-w-full block"
+            onClick={() => props.onOpenExportPdf(r.spId)}
+          >
+            {r.id}
+          </button>
+        ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      thClassName: "w-[7%]",
+      tdClassName: "w-[7%]",
+      render: (r: Row) => <StatusText status={r.status} />,
+    },
+    {
+      key: "requestor",
+      header: "Requestor<br/>Name",
+      thClassName: "w-[8%]",
+      tdClassName: "w-[8%]",
+      render: (r: Row) => (
+        <CellText value={r.requestor === "-" ? "" : r.requestor} maxWidth="max-w-full" />
       ),
-  },
-  {
-    key: "status",
-    header: "Status",
-    thClassName: "w-[7%]",
-    tdClassName: "w-[7%]",
-    render: (r: Row) => <StatusText status={r.status} />,
-  },
-  {
-    key: "requestor",
-    header: "Requestor<br/>Name",
-    thClassName: "w-[8%]",
-    tdClassName: "w-[8%]",
-    render: (r: Row) => (
-      <CellText value={r.requestor === "-" ? "" : r.requestor} maxWidth="max-w-full" />
-    ),
-  },
-  {
-    key: "approver",
-    header: "Approver<br/>Name",
-    thClassName: "w-[8%]",
-    tdClassName: "w-[8%]",
-    render: (r: Row) => (
-      <CellText value={r.status === "Approved" || r.status === "Rejected" ? (r.approver === "-" ? "" : r.approver) : ""} maxWidth="max-w-full" />
-    ),
-  },
-  {
-    key: "purpose",
-    header: "Purpose",
-    thClassName: "w-[7%]",
-    tdClassName: "w-[7%]",
-    render: (r: Row) => (
-      <CellText value={r.purpose === "-" ? "" : r.purpose} maxWidth="max-w-full" />
-    ),
-  },
-  {
-    key: "purposedetails",
-    header: "Purpose<br/>Detail",
-    thClassName: "w-[7%]",
-    tdClassName: "w-[7%]",
-    render: (r: Row) => (
-      <CellText value={r.PurposeDetails === "-" ? "" : r.PurposeDetails} maxWidth="max-w-full" />
-    ),
-  },
-  {
-    key: "costCenter",
-    header: "Cost<br/>Center",
-    thClassName: "w-[7%]",
-    tdClassName: "w-[7%]",
-    render: (r: Row) => (
-      <CellText value={r.costCenter === "-" ? "" : r.costCenter} maxWidth="max-w-full" />
-    ),
-  },
-  {
-    key: "submitted",
-    header: "Submitted<br/>Date",
-    thClassName: "w-[8%]",
-    tdClassName: "w-[8%] whitespace-nowrap",
-    render: (r: Row) => (r.submitted === "-" || !r.submitted ? "" : r.submitted),
-  },
-  {
-    key: "approved",
-    header: "Approved<br/>Date",
-    thClassName: "w-[8%]",
-    tdClassName: "w-[8%] whitespace-nowrap",
-    render: (r: Row) => (r.approved === "-" || !r.approved ? "" : r.approved),
-  },
-  {
-    key: "expected",
-    header: "Expected<br/>Delivery Date",
-    thClassName: "w-[8%]",
-    tdClassName: "w-[8%] whitespace-nowrap",
-    render: (r: Row) => (r.expected === "-" || !r.expected ? "" : r.expected),
-  },
-  {
-    key: "qty",
-    header: "Total<br/>Quantity",
-    thClassName: "w-[5%] text-left",
-    tdClassName: "w-[5%] whitespace-nowrap text-left",
-    render: (r: Row) => r.qty,
-  },
-  {
-    key: "price",
-    header: "Total Tag<br/>Price",
-    thClassName: "w-[7%] text-left",
-    tdClassName: "w-[7%] whitespace-nowrap text-left",
-    render: (r: Row) =>
-      r.price.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }),
-  },
-  {
-    key: "export",
-    header: "Export<br/>Request",
-    thClassName: "w-[9%] text-left",
-    tdClassName: "w-[9%] text-left",
-    render: (r: Row) => (
-      <div className="flex justify-start">
-        <button
-          type="button"
-          className="w-full max-w-[76px] inline-flex items-center justify-center px-1.5 py-1.5 bg-[#F6F6F6] rounded-md border border-[#EBEBEB] text-[#81AFEB]  text-[9px] font-semibold hover:bg-[#F0F7FF] hover:border hover:border-[#2172DA] hover:text-blue-400"
-          onClick={() => props.onDownloadPdf(r.spId)}
-        >
-          Export .PDF
-        </button>
-      </div>
-    ),
-  },
-];
+    },
+    {
+      key: "approver",
+      header: "Approver<br/>Name",
+      thClassName: "w-[8%]",
+      tdClassName: "w-[8%]",
+      render: (r: Row) => (
+        <CellText value={r.status === "Approved" || r.status === "Rejected" ? (r.approver === "-" ? "" : r.approver) : ""} maxWidth="max-w-full" />
+      ),
+    },
+    {
+      key: "purpose",
+      header: "Purpose",
+      thClassName: "w-[7%]",
+      tdClassName: "w-[7%]",
+      render: (r: Row) => (
+        <CellText value={r.purpose === "-" ? "" : r.purpose} maxWidth="max-w-full" />
+      ),
+    },
+    {
+      key: "purposedetails",
+      header: "Purpose<br/>Detail",
+      thClassName: "w-[7%]",
+      tdClassName: "w-[7%]",
+      render: (r: Row) => (
+        <CellText value={r.PurposeDetails === "-" ? "" : r.PurposeDetails} maxWidth="max-w-full" />
+      ),
+    },
+    {
+      key: "costCenter",
+      header: "Cost<br/>Center",
+      thClassName: "w-[7%]",
+      tdClassName: "w-[7%]",
+      render: (r: Row) => (
+        <CellText value={r.costCenter === "-" ? "" : r.costCenter} maxWidth="max-w-full" />
+      ),
+    },
+    {
+      key: "submitted",
+      header: "Submitted<br/>Date",
+      thClassName: "w-[8%]",
+      tdClassName: "w-[8%] whitespace-nowrap",
+      render: (r: Row) => (r.submitted === "-" || !r.submitted ? "" : r.submitted),
+    },
+    {
+      key: "approved",
+      header: "Approved<br/>Date",
+      thClassName: "w-[8%]",
+      tdClassName: "w-[8%] whitespace-nowrap",
+      render: (r: Row) => (r.approved === "-" || !r.approved ? "" : r.approved),
+    },
+    {
+      key: "expected",
+      header: "Expected<br/>Delivery Date",
+      thClassName: "w-[8%]",
+      tdClassName: "w-[8%] whitespace-nowrap",
+      render: (r: Row) => (r.expected === "-" || !r.expected ? "" : r.expected),
+    },
+    {
+      key: "qty",
+      header: "Total<br/>Quantity",
+      thClassName: "w-[5%] text-left",
+      tdClassName: "w-[5%] whitespace-nowrap text-left",
+      render: (r: Row) => r.qty,
+    },
+    {
+      key: "price",
+      header: "Total Tag<br/>Price",
+      thClassName: "w-[7%] text-left",
+      tdClassName: "w-[7%] whitespace-nowrap text-left",
+      render: (r: Row) =>
+        r.price.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }),
+    },
+    {
+      key: "export",
+      header: "Export<br/>Request",
+      thClassName: "w-[9%] text-left",
+      tdClassName: "w-[9%] text-left",
+      render: (r: Row) => (
+        <div className="flex justify-start">
+          <button
+            type="button"
+            className="w-full max-w-[76px] inline-flex items-center justify-center px-1.5 py-1.5 bg-[#F6F6F6] rounded-md border border-[#EBEBEB] text-[#81AFEB]  text-[9px] font-semibold hover:bg-[#F0F7FF] hover:border hover:border-[#2172DA] hover:text-blue-400"
+            onClick={() => props.onDownloadPdf(r.spId)}
+          >
+            Export .PDF
+          </button>
+        </div>
+      ),
+    },
+  ];
 
 
   return (
@@ -788,7 +890,7 @@ const columns = [
       setExpectedFrom={setExpectedFrom}
       setExpectedTo={setExpectedTo}
       searchDraft={searchDraft}
-        manualSelectedCount={manualSelectedIds.length}   // ✅ ADD
+      manualSelectedCount={manualSelectedIds.length}   // ✅ ADD
       setSearchDraft={setSearchDraft}
       onSearch={() => {
         setSearchText(searchDraft);
@@ -816,6 +918,8 @@ const columns = [
       onExportExcel={onExportExcel}
       canExport={canExport}
       showDisabledExport={props.permissions?.viewExportAllReport === true}
+      countIncreased={countIncreased}
+
     />
   );
 }

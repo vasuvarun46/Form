@@ -43,9 +43,9 @@ type Props = {
   spId: number | undefined;
   exportActionInfo?: ExportActionInfo;
   onNavigate: (route: Route, state?: RouteState) => void;
-  onApprove?: (comments?: string) => Promise<void>;
-  onReject?: (comments?: string) => Promise<void>;
-  onBypass?: (comments?: string) => Promise<void>;
+  onApprove?: (comments?: string) => Promise<string>;  // ✅ returns message
+  onReject?: (comments?: string) => Promise<string>;   // ✅ returns message
+  onBypass?: (comments?: string) => Promise<string>;   // ✅ returns message
   exportSource?: Route;
   permissions: SecurityPermissions;
   autoExport?: boolean;
@@ -789,22 +789,21 @@ export default function ExportPDFPage({
     async (action: PendingAction, comments = ""): Promise<void> => {
       setActionSubmitting(true);
       try {
+        let successMessage = "";
+
         if (action === "Approve") {
           if (!onApprove) throw new Error("Approve action is unavailable.");
-          await onApprove(comments);
+          successMessage = await onApprove(comments); // ✅ use PA message
         }
         if (action === "Reject") {
           if (!onReject) throw new Error("Reject action is unavailable.");
-          await onReject(comments);
+          successMessage = await onReject(comments);  // ✅ use PA message
         }
         if (action === "Bypass") {
           if (!onBypass) throw new Error("Bypass action is unavailable.");
-          await onBypass(comments);
+          successMessage = await onBypass(comments);  // ✅ use PA message
         }
-        const successMessage =
-          action === "Approve" ? "The request is approved by the first approver."
-            : action === "Reject" ? "The request is rejected."
-              : "The request is bypassed.";
+
         onNavigate("team", { toastType: "success", toastMessage: successMessage });
       } catch (err: unknown) {
         const message =
@@ -876,88 +875,140 @@ export default function ExportPDFPage({
   };
 
   React.useEffect(() => {
-    const loadLines = async (): Promise<void> => {
-      try {
-        setLineError("");
-        setLineLoading(true);
-        setLineItems([]);
-        if (!spId) return;
+  const loadLines = async (): Promise<void> => {
+    try {
+      setLineError("");
+      setLineLoading(true);
+      setLineItems([]);
+      if (!spId) return;
 
-        const webUrl = context.pageContext.web.absoluteUrl;
-        const childListTitle = "InventoryRequestItems";
-        const requestLookupInternal = "RequestID";
-        const colTitle = "Title";
-        const colLineNumber = "LineNumber";
-        const colSku = "SKUCode";
-        const colDesc = "ProductDescription";
-        const colColor = "Color";
-        const colSize = "Size";
-        const colUnitPrice = "UnitPrice";
-        const colQty = "Quantity";
-        const colLineTotal = "LineTotal";
-        const colLookupSource = "LookupSource";
-        const colRowStatus = "RowStatus";
+      const webUrl = context.pageContext.web.absoluteUrl;
+      const childListTitle = "InventoryRequestItems";
+      const requestLookupInternal = "RequestID";
+      const colTitle = "Title";
+      const colLineNumber = "LineNumber";
+      const colSku = "SKUCode";
+      const colDesc = "ProductDescription";
+      const colColor = "Color";
+      const colSize = "Size";
+      const colUnitPrice = "UnitPrice";
+      const colQty = "Quantity";
+      const colLineTotal = "LineTotal";
+      const colLookupSource = "LookupSource";
+      const colRowStatus = "RowStatus";
 
-        type ChildRow = Record<string, unknown> & { Id?: number };
-        type SpListResponse<T> = { value?: T[] };
+      type ChildRow = Record<string, unknown> & { Id?: number };
+      type SpListResponse<T> = { value?: T[]; "@odata.nextLink"?: string };
 
-        const tryFetch = async (url: string): Promise<SpListResponse<ChildRow>> => {
-          const r = await context.spHttpClient.get(url, SPHttpClient.configurations.v1);
-          if (!r.ok) {
-            const body = await r.text();
-            throw new Error(`SharePoint ${r.status}: ${body}`);
-          }
-          return (await r.json()) as SpListResponse<ChildRow>;
-        };
+      const tryFetch = async (url: string): Promise<SpListResponse<ChildRow>> => {
+        const r = await context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        if (!r.ok) {
+          const body = await r.text();
+          throw new Error(`SharePoint ${r.status}: ${body}`);
+        }
+        return (await r.json()) as SpListResponse<ChildRow>;
+      };
 
-        const urlLookup =
-          `${webUrl}/_api/web/lists/getbytitle('${childListTitle}')/items` +
-          `?$select=Id,${colTitle},${colLineNumber},${colSku},${colDesc},${colColor},${colSize},${colUnitPrice},${colQty},${colLineTotal},${colLookupSource},${colRowStatus},${requestLookupInternal}/Id` +
-          `&$expand=${requestLookupInternal}` +
-          `&$filter=${requestLookupInternal}/Id eq ${spId} and ${colRowStatus} eq 'Active'` +
-          `&$orderby=${colLineNumber} asc`;
+      // ✅ Paginated fetch — keeps following @odata.nextLink until exhausted
+      const fetchAllPages = async (firstUrl: string): Promise<ChildRow[]> => {
+        const allRows: ChildRow[] = [];
+        let nextUrl: string | undefined = firstUrl;
 
-        let json: SpListResponse<ChildRow>;
-        try {
-          json = await tryFetch(urlLookup);
-        } catch {
-          const urlNumber =
-            `${webUrl}/_api/web/lists/getbytitle('${childListTitle}')/items` +
-            `?$select=Id,${colTitle},${colLineNumber},${colSku},${colDesc},${colColor},${colSize},${colUnitPrice},${colQty},${colLineTotal},${colLookupSource},${colRowStatus},${requestLookupInternal}` +
-            `&$filter=${requestLookupInternal} eq ${spId} and ${colRowStatus} eq 'Active'` +
-            `&$orderby=${colLineNumber} asc`;
-          json = await tryFetch(urlNumber);
+        while (nextUrl) {
+          const page: SpListResponse<ChildRow> = await tryFetch(nextUrl);
+          const pageRows = Array.isArray(page.value) ? page.value : [];
+          allRows.push(...pageRows);
+          nextUrl = page["@odata.nextLink"] || undefined;
         }
 
-        const rowsRaw = Array.isArray(json.value) ? json.value : [];
-        const rows: LineItem[] = rowsRaw.map((x): LineItem => {
-          const id = Number(x.Id ?? 0);
-          const title = String(x[colTitle] ?? "");
-          const lineNumber = Number(x[colLineNumber] ?? 0);
-          const skuCode = String(x[colSku] ?? "");
-          const productDescription = String(x[colDesc] ?? "");
-          const color = String(x[colColor] ?? "");
-          const size = String(x[colSize] ?? "");
-          const unitPrice = Number(x[colUnitPrice] ?? 0);
-          const quantity = Number(x[colQty] ?? 0);
-          const lineTotalRaw = x[colLineTotal];
-          const lineTotal =
-            typeof lineTotalRaw === "number" ? lineTotalRaw
-              : Number(lineTotalRaw ?? unitPrice * quantity);
-          const lookupSource = String(x[colLookupSource] ?? "");
-          const rowStatus = String(x[colRowStatus] ?? "");
-          return { id, title, lineNumber, skuCode, productDescription, color, size, unitPrice, quantity, lineTotal, lookupSource, rowStatus };
-        });
+        return allRows;
+      };
 
-        setLineItems(rows);
-      } catch (e: unknown) {
-        setLineError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setLineLoading(false);
+      const selectFields = [
+        "Id",
+        colTitle,
+        colLineNumber,
+        colSku,
+        colDesc,
+        colColor,
+        colSize,
+        colUnitPrice,
+        colQty,
+        colLineTotal,
+        colLookupSource,
+        colRowStatus,
+        `${requestLookupInternal}/Id`,
+      ].join(",");
+
+      // ✅ $top=5000 is the SharePoint max per page — nextLink handles the rest
+      const urlLookup =
+        `${webUrl}/_api/web/lists/getbytitle('${childListTitle}')/items` +
+        `?$select=${selectFields}` +
+        `&$expand=${requestLookupInternal}` +
+        `&$filter=${requestLookupInternal}/Id eq ${spId} and ${colRowStatus} eq 'Active'` +
+        `&$orderby=${colLineNumber} asc` +
+        `&$top=5000`;
+
+      let rowsRaw: ChildRow[];
+
+      try {
+        rowsRaw = await fetchAllPages(urlLookup);
+      } catch {
+        // Fallback: try without expand (use numeric lookup field directly)
+        const urlNumber =
+          `${webUrl}/_api/web/lists/getbytitle('${childListTitle}')/items` +
+          `?$select=Id,${colTitle},${colLineNumber},${colSku},${colDesc},${colColor},${colSize},${colUnitPrice},${colQty},${colLineTotal},${colLookupSource},${colRowStatus},${requestLookupInternal}` +
+          `&$filter=${requestLookupInternal} eq ${spId} and ${colRowStatus} eq 'Active'` +
+          `&$orderby=${colLineNumber} asc` +
+          `&$top=5000`;
+
+        rowsRaw = await fetchAllPages(urlNumber);
       }
-    };
-    loadLines().catch(() => undefined);
-  }, [context, spId]);
+
+      const rows: LineItem[] = rowsRaw.map((x): LineItem => {
+        const id = Number(x.Id ?? 0);
+        const title = String(x[colTitle] ?? "");
+        const lineNumber = Number(x[colLineNumber] ?? 0);
+        const skuCode = String(x[colSku] ?? "");
+        const productDescription = String(x[colDesc] ?? "");
+        const color = String(x[colColor] ?? "");
+        const size = String(x[colSize] ?? "");
+        const unitPrice = Number(x[colUnitPrice] ?? 0);
+        const quantity = Number(x[colQty] ?? 0);
+        const lineTotalRaw = x[colLineTotal];
+        const lineTotal =
+          typeof lineTotalRaw === "number"
+            ? lineTotalRaw
+            : Number(lineTotalRaw ?? unitPrice * quantity);
+        const lookupSource = String(x[colLookupSource] ?? "");
+        const rowStatus = String(x[colRowStatus] ?? "");
+
+        return {
+          id,
+          title,
+          lineNumber,
+          skuCode,
+          productDescription,
+          color,
+          size,
+          unitPrice,
+          quantity,
+          lineTotal,
+          lookupSource,
+          rowStatus,
+        };
+      });
+
+      setLineItems(rows);
+    } catch (e: unknown) {
+      setLineError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLineLoading(false);
+    }
+  };
+
+  loadLines().catch(() => undefined);
+}, [context, spId]);
 
   type JsPdfCtor = new (opts: { orientation: "p" | "l"; unit: "mm"; format: "a4" }) => {
     internal: { pageSize: { getWidth: () => number; getHeight: () => number } };
@@ -1476,8 +1527,8 @@ export default function ExportPDFPage({
               <button
                 className={
                   isRejectModal
-                    ? "h-[38px] w-[96px] rounded-[6px] border border-[#d7d7d7] bg-[#e4e4e4] text-[16px] leading-none font-medium text-[#474747] hover:bg-[#d8d8d8] disabled:opacity-50"
-                    : "h-[46px] rounded-[10px] border border-[#ececec] bg-[#ececec] text-[16px] leading-none font-semibold text-[#494949] hover:bg-[#dfdfdf] disabled:opacity-50"
+                    ? "h-[38px] w-[96px] rounded-[6px] border border-[#E8E8E8] bg-[#E8E8E8] text-[16px] leading-none font-medium text-[#474747] hover:bg-[#EBEBEB] disabled:opacity-50"
+                    : "h-[46px] rounded-[10px] border border-[#E8E8E8] bg-[#E8E8E8] text-[16px] leading-none font-semibold text-[#494949] hover:bg-[#EBEBEB] disabled:opacity-50"
                 }
                 onClick={() => closeActionModal()}
                 disabled={actionSubmitting}
@@ -1494,8 +1545,8 @@ export default function ExportPDFPage({
                         ? "h-[38px] w-[96px] rounded-[6px] bg-[#d9d9d9] text-[16px] leading-none font-semibold text-[#8f8f8f] cursor-not-allowed"
                         : "h-[46px] rounded-[10px] bg-[#d9d9d9] text-[16px] leading-none font-semibold text-[#8f8f8f] cursor-not-allowed"
                       : isRejectModal
-                        ? "h-[38px] w-[96px] rounded-[6px] bg-[#df1f26] text-[16px] leading-none font-semibold text-white hover:bg-[#c71920]"
-                        : "h-[46px] rounded-[10px] bg-[#dc2626] text-[16px] leading-none font-semibold text-white hover:bg-[#b91c1c]"
+                        ? "h-[38px] w-[96px] rounded-[6px] bg-[#DA2128] text-[16px] leading-none font-semibold text-white hover:bg-[#AF0007]"
+                        : "h-[46px] rounded-[10px] bg-[#DA2128] text-[16px] leading-none font-semibold text-white hover:bg-[#AF0007]"
                 }
                 onClick={confirmAction}
                 disabled={confirmDisabled}
@@ -1506,6 +1557,7 @@ export default function ExportPDFPage({
                       : "Bypassing..."
                   : pendingAction}
               </button>
+
             </div>
           </div>
         </div>

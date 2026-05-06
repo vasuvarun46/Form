@@ -50,11 +50,11 @@ function FieldSelect({
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
           className={[
-            "w-full h-12 rounded-md px-3 pt-5 text-[12px]",
+            "w-full h-[52px] rounded-md pl-3 pr-8 pt-[18px] pb-1 text-[12px]",
             "appearance-none",
             "disabled:opacity-100",
             "disabled:cursor-not-allowed",
-            "border border-[#e7e7e7] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 hover:border-blue-400",
+            "border-2 border-[#e7e7e7] focus:outline-none focus:border-blue-500 focus:ring-0 hover:!border-[#76A8E8]",
           ].join(" ")}
           style={{ backgroundColor: bgColor, color: textColor }}
         >
@@ -73,15 +73,12 @@ function FieldSelect({
         </span>
 
         <div
-          className="absolute left-3 top-1.5 text-[10px] text-gray-500 px-1 pointer-events-none"
-          style={{ backgroundColor: bgColor }}
+          className="absolute left-3 top-1.5 text-[10px] text-gray-500 pointer-events-none" style={{ backgroundColor: bgColor }}
         >
-          <span className="text-[#E60023]">*</span> {label}
-        </div>
+          <span className="text-[#E56D71]">*</span>{label}        </div>
       </div>
 
-      {error && <div className="mt-1 text-[10px] text-red-700">{error}</div>}
-    </div>
+      {error && <div className="mt-1 text-[10px] text-[#E56D71]">{error}</div>}    </div>
   );
 }
 
@@ -135,7 +132,7 @@ function FieldDate({
   return (
     <div>
       <div
-        className="relative cursor-pointer"
+        className="group relative cursor-pointer"
         onClick={() => {
           if (disabled) return;
           const el = inputRef.current as InputWithPicker | null;
@@ -144,6 +141,7 @@ function FieldDate({
           }
         }}
       >
+
         <input
           ref={inputRef}
           type="date"
@@ -156,10 +154,10 @@ function FieldDate({
 
         <div
           className={[
-            "w-full h-12 rounded-md px-3 pt-5 text-[12px]",
+            "w-full h-[52px] rounded-md pl-3 pr-8 pt-[18px] pb-1 text-[12px]",
             "appearance-none select-none",
             disabled ? "cursor-not-allowed" : "cursor-pointer",
-            "border border-[#e7e7e7] focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 hover:border-blue-400",
+            "border-2 border-[#e7e7e7] focus-within:border-blue-500 focus-within:ring-0 group-hover:!border-[#76A8E8]",
           ].join(" ")}
           style={{ backgroundColor: bgColor }}
         >
@@ -170,19 +168,20 @@ function FieldDate({
           )}
         </div>
 
+
         <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">
           <IconChevronDown />
         </span>
-
         <div
-          className="absolute left-3 top-1.5 text-[10px] text-gray-500 px-1 pointer-events-none"
+          className="absolute left-3 top-1.5 text-[10px] text-gray-500 pointer-events-none"
           style={{ backgroundColor: bgColor }}
         >
-          <span className="text-[#E60023]">*</span> {label}
+          <span className="text-[#E56D71]">*</span>{label}
         </div>
       </div>
 
-      {error && <div className="mt-1 text-[10px] text-red-700">{error}</div>}
+      {error && <div className="mt-1 text-[10px] text-[#E56D71]">{error}</div>}
+
     </div>
   );
 }
@@ -196,7 +195,7 @@ export default function UsageInfoSection({
   fieldErrors,
   disabled = false,
   context,
-  textFieldsDisabled = false, 
+  textFieldsDisabled = false,
 
 }: Props): JSX.Element {
   // const dropdownsSelected =
@@ -204,17 +203,16 @@ export default function UsageInfoSection({
   //   !!usage.costCenter &&
   //   !!usage.expectedDelivery;
 
-const textFieldDisabled = disabled ;
+  const textFieldDisabled = disabled;
   const timezoneOffsetMinutes = useSharePointTimezoneOffset(context);
 
   return (
     <section className="rounded-xl border border-[#e5e5e5] shadow-sm p-4 sm:p-5 pdf-thai bg-white transition-colors duration-200">
-      <h2 className="text-[13px] font-semibold text-gray-900 mb-4">
+      <h2 className="text-[13px] font-bold text-gray-900 mb-4">
         Usage Information
       </h2>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-x-10 gap-y-4">
-        {/* ROW 1 — grayBackground only when isExcelMode (disabled=true) */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-x-10 gap-y-4 -ml-3">        {/* ROW 1 — grayBackground only when isExcelMode (disabled=true) */}
         <FieldSelect
           label="Purpose"
           value={usage.purpose}
