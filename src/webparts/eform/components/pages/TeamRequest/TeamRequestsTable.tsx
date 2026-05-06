@@ -75,54 +75,54 @@ export default function TeamRequestsTable(props: {
       {!loading && <div className="px-4 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-[12px] text-gray-600 border-t border-[#eeeeee] bg-[#fafafa]">
         <div className="flex flex-wrap items-center gap-2">
 
-        <button
+          <button
 
-          onClick={goFirst}
+            onClick={goFirst}
 
-          disabled={safePageIndex === 0}
+            disabled={safePageIndex === 0}
 
-          className="h-7 px-2.5 rounded-md border text-[12px] font-medium bg-white border-gray-300 text-[#0a66d8] hover:bg-[#e6f0fb] disabled:bg-gray-100 disabled:text-gray-500 disabled:border-gray-200 disabled:cursor-not-allowed" >
+            className="h-7 px-2.5 rounded-md border text-[12px] font-medium bg-white border-gray-300 text-[#2172DA] hover:bg-[#2172DA] hover:text-white disabled:cursor-not-allowed disabled:border-[#D9D9D9] disabled:bg-[#D9D9D9] disabled:text-gray-500" >
 
-          First
-        </button>
+            First
+          </button>
 
-        <button
+          <button
 
-          onClick={goPrev}
+            onClick={goPrev}
 
-          disabled={safePageIndex === 0}
+            disabled={safePageIndex === 0}
 
-          className="h-7 px-2.5 rounded-md border text-[12px] font-medium bg-white border-gray-300 text-[#0a66d8]  hover:bg-[#e6f0fb]  disabled:bg-gray-100 disabled:text-gray-500 disabled:border-gray-200 disabled:cursor-not-allowed">
+            className="h-7 px-2.5 rounded-md border text-[12px] font-medium bg-white border-gray-300 text-[#2172DA] hover:bg-[#2172DA] hover:text-white disabled:cursor-not-allowed disabled:border-[#D9D9D9] disabled:bg-[#D9D9D9] disabled:text-gray-500">
 
-          Previous
-        </button>
+            Previous
+          </button>
 
-        <span className="px-3 text-[12px] text-gray-700">
+          <span className="px-3 text-[12px] text-gray-700">
 
-          Page {safePageIndex + 1} of {totalPages}
-        </span>
+            Page {safePageIndex + 1} of {totalPages}
+          </span>
 
-        <button
+          <button
 
-          onClick={goNext}
+            onClick={goNext}
 
-          disabled={safePageIndex >= totalPages - 1}
+            disabled={safePageIndex >= totalPages - 1}
 
-          className="h-7 px-2.5 rounded-md border text-[12px] font-medium bg-white border-gray-300 text-[#0a66d8] hover:bg-[#e6f0fb] disabled:bg-gray-100 disabled:text-gray-500 disabled:border-gray-200 disabled:cursor-not-allowed">
+            className="h-7 px-2.5 rounded-md border text-[12px] font-medium bg-white border-gray-300 text-[#2172DA] hover:bg-[#2172DA] hover:text-white disabled:cursor-not-allowed disabled:border-[#D9D9D9] disabled:bg-[#D9D9D9] disabled:text-gray-500">
 
-          Next
-        </button>
+            Next
+          </button>
 
-        <button
+          <button
 
-          onClick={goLast}
+            onClick={goLast}
 
-          disabled={safePageIndex >= totalPages - 1}
+            disabled={safePageIndex >= totalPages - 1}
 
-          className="h-7 px-2.5 rounded-md border text-[12px] font-medium bg-white border-gray-300 text-[#0a66d8] hover:bg-[#e6f0fb] disabled:bg-gray-100 disabled:text-gray-500 disabled:border-gray-200 disabled:cursor-not-allowed">
+            className="h-7 px-2.5 rounded-md border text-[12px] font-medium bg-white border-gray-300 text-[#2172DA] hover:bg-[#2172DA] hover:text-white disabled:cursor-not-allowed disabled:border-[#D9D9D9] disabled:bg-[#D9D9D9] disabled:text-gray-500">
 
-          Last
-        </button>
+            Last
+          </button>
 
         </div>
         {/* <span className="text-[11px] sm:text-[12px] text-gray-500">

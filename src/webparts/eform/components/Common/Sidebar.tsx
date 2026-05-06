@@ -124,7 +124,7 @@ export default function Sidebar({
     <aside
       className={[
         "h-full flex flex-col pdf-thai relative",
-        isDrawer ? "bg-white" : "bg-[#f2f2f2]",
+        isDrawer ? "bg-white" : "bg-[#EBEBEB]",
         collapsed ? "w-[76px]" : "w-full",
       ].join(" ")}
     >

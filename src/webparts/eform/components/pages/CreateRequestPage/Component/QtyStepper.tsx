@@ -39,13 +39,20 @@ export default function QtyStepper({
     onChange(draftValue);
   };
   const currentQty = Number(draftValue) || value;
+  const [isHovered, setIsHovered] = React.useState(false);
 
   return (
-    <div className="pdf-thai mx-auto w-[120px] flex items-center rounded-md overflow-hidden bg-white border-2 border-[#C4C4C4]">
+    <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{ border: `2px solid ${isHovered ? "#76A8E8" : "#C4C4C4"}`, cursor: "pointer" }}
+      className="pdf-thai mx-auto w-[120px] flex items-center rounded-md overflow-hidden bg-white"
+    >
+
 
       <button
         type="button"
-        style={{ borderRight: "2px solid #C4C4C4" }}
+        style={{ borderRight: `2px solid ${isHovered ? "#76A8E8" : "#C4C4C4"}` }}
         className={`w-9 h-8 text-gray-700 ${disabled || value <= 1 || (maxStock !== undefined && maxStock > 0 && currentQty > maxStock) ? "bg-[#D9D9D9]" : "bg-white hover:bg-[#E8E8E8]"}`}
 
         onClick={onDec}
@@ -69,15 +76,14 @@ export default function QtyStepper({
           }
         }}
         onBlur={commitDraftValue}
-        className="w-full h-8 text-center text-[12px] focus:outline-none focus-visible:outline-none"
+        className="w-full h-8 text-center text-[12px] cursor-pointer focus:outline-none focus-visible:outline-none"
         disabled={disabled}
       />
 
       <button
         type="button"
-        style={{ borderLeft: "2px solid #C4C4C4", borderRight: "none", borderTop: "none", borderBottom: "none" }}
+        style={{ borderLeft: `2px solid ${isHovered ? "#76A8E8" : "#C4C4C4"}`, borderRight: "none", borderTop: "none", borderBottom: "none" }}
         className={`w-9 h-8 text-gray-700 ${disabled || (maxStock !== undefined && maxStock > 0 && currentQty >= maxStock) ? "bg-[#D9D9D9] cursor-not-allowed" : "bg-white hover:bg-[#E8E8E8]"}`}
-
         onClick={onInc}
         disabled={disabled || (maxStock !== undefined && maxStock > 0 && currentQty >= maxStock)}
 

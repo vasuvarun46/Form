@@ -1,11 +1,11 @@
 import * as React from "react";
 import { ISuparaItem } from "../CreateRequestService";
- 
+
 type Props = {
   userData: ISuparaItem[];
   card: string;
 };
- 
+
 function Info({ label, value }: { label: string; value: React.ReactNode }): JSX.Element {
   return (
     <div className="flex items-start text-[13px] pdf-thai min-w-0">
@@ -16,18 +16,18 @@ function Info({ label, value }: { label: string; value: React.ReactNode }): JSX.
     </div>
   );
 }
- 
+
 export default function GeneralInfoSection({ userData, card }: Props): JSX.Element {
   const u = userData[0];
- 
+
   return (
     <section className={`${card} p-4 sm:p-5`}>
-      <h2 className="text-[13px] font-bold text-gray-900 mb-4">General Information</h2> 
+      <h2 className="text-[13px] font-bold text-gray-900 mb-4">General Information</h2>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-10 gap-y-4">
         <Info label="ชื่อผู้เบิก / Requestor Name :" value={u?.Title || "-"} />
         <Info label="รหัสพนักงาน / Employee ID :" value={u?.EmployeeID || "-"} />
         <Info label="อีเมล / Email :" value={u?.Email || "-"} />
- 
+
         <div className="lg:col-start-1">
           <Info label="ตำแหน่ง / Job Position :" value={u?.Jobposition || "-"} />
         </div>

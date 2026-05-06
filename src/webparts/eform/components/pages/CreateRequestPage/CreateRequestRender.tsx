@@ -269,6 +269,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
   const [removeFileConfirmOpen, setRemoveFileConfirmOpen] = React.useState(false);
   const isDownloadingTemplateRef = React.useRef(false);
   const [searchBarHovered, setSearchBarHovered] = React.useState(false);
+  const [searchBtnHovered, setSearchBtnHovered] = React.useState(false);
   const productTableRef = React.useRef<HTMLTableElement>(null);
   const [fp, setFp] = React.useState<{ qL: number; qW: number; tL: number; tW: number } | null>(null);
   React.useEffect(() => {
@@ -443,7 +444,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                   {/* Buttons */}
                   <div className="flex items-center justify-center gap-3">
                     <button
-                      className="h-10 px-6 rounded-lg bg-[#EBEBEB] text-gray-700 text-[13px] font-medium hover:bg-[#EBEBEB]"
+                      className="h-10 px-6 rounded-lg bg-[#E8E8E8] text-gray-700 text-[13px] font-medium hover:bg-[#EBEBEB]"
                       onClick={() => {
                         setModeChangeConfirmOpen(false);
                         setPendingMode("");
@@ -695,16 +696,25 @@ export default function CreateRequestRender(props: Props): JSX.Element {
 
                 {/* ✅ Search bar */}
                 <div className="w-[560px] max-w-full">
-                  <div className={["h-10 w-full flex items-stretch overflow-hidden rounded-md border-2 bg-white transition-colors",
+                  <div className={[
+                    "h-10 w-full flex items-stretch overflow-hidden rounded-md border-2 bg-white transition-colors",
                     searchSku
                       ? "border-[#76A8E8]"
                       : searchBarHovered
                         ? "border-[#76A8E8]"
                         : "border-[#e6e6e6]",
                   ].join(" ")}>
-                    <div className="relative flex-1"
+
+                    <div
+                      className="relative flex-1"
                       onMouseEnter={() => setSearchBarHovered(true)}
-                      onMouseLeave={() => setSearchBarHovered(false)}>
+                      onMouseLeave={(e) => {
+                        const related = e.relatedTarget as HTMLElement | null;
+                        if (related && related.closest("[data-search-btn]")) return;
+                        setSearchBarHovered(false);
+                      }}
+                    >
+
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#B1B1B1]">
                         <IconSearch className="h-5 w-5" />
                       </span>
@@ -747,21 +757,25 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                       )}
 
                     </div>
-
                     <button
                       type="button"
+                      data-search-btn
                       disabled={isSearchingSku}
                       onClick={() => handleManualSkuSearch().catch(() => undefined)}
+                      onMouseEnter={() => setSearchBtnHovered(true)}
+                      onMouseLeave={() => { setSearchBtnHovered(false); setSearchBarHovered(false); }}
+                      style={{
+                        borderLeft: `2px solid ${(searchBarHovered || searchSku) ? "#76A8E8" : "transparent"}`,
+                      }}
                       className={[
-                        "h-full px-6 text-[12px] font-semibold border-l-2 transition-colors",
-                        searchBarHovered
-                          ? "bg-[#F0F7FF] text-[#2172DA] border-[#76A8E8]"
-                          : searchSku
-                            ? "bg-[#2172DA] text-white border-[#76A8E8]"
-                            : "bg-[#2172DA] text-white border-transparent",
+                        "h-full px-6 text-[12px] font-semibold transition-colors",
+                        (!searchSku && searchBarHovered && !searchBtnHovered) || (searchSku && searchBtnHovered)
+                          ? "bg-[#F0F7FF] text-[#2172DA]"
+                          : "bg-[#2172DA] text-white",
                         isSearchingSku ? "opacity-60 cursor-not-allowed" : "",
                       ].join(" ")}
                     >
+
                       {isSearchingSku ? "Searching..." : "Search"}
                     </button>
                   </div>
@@ -954,11 +968,8 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                       const rowErr: string | undefined = itemErrors[idx];
                       return (
                         // AFTER
-                        <tr
-                          key={`${it.sku}-${idx}`}
-                          data-row-error={inventoryMode === "manual" && rowErr ? "true" : undefined}
-                          className={inventoryMode === "manual" && rowErr ? "bg-red-50" : ""}
-                        >
+                        <tr key={`${it.sku}-${idx}`} className={inventoryMode === "manual" && rowErr ? "bg-red-50" : ""}>
+
                           <Td>{it.no}</Td>
                           <Td>
                             <span className="block truncate" title={it.sku}>{it.sku}</span>
@@ -1006,7 +1017,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                                   "h-8 sm:h-9 px-3 sm:px-4 whitespace-nowrap rounded-md text-[11px] sm:text-[12px] font-semibold transition-all duration-200",
                                   rowErr
                                     ? "!border !border-[#ff6b6b] !bg-white !text-[#ff3b3b]"
-                                    : "!border !border-red-400 !bg-red-50 !text-red-600 hover:!bg-red-600 hover:!text-white hover:!border-red-600",
+                                    : "!border !border-[#DA2128] !bg-[#FBE9EA] !text-[#DA2128] hover:!bg-[#DA2128] hover:!text-white hover:!border-[#DA2128]",
                                 ].join(" ")}
                               >
                                 {rowErr ? (
@@ -1352,7 +1363,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                   <button
                     type="button"
                     onClick={confirmRemoveItem}
-                    className="h-11 min-w-[140px] rounded-[8px] bg-[#e8242a] px-6 text-[15px] font-semibold text-white hover:bg-[#d61b22]"
+                    className="h-11 min-w-[140px] rounded-[8px] bg-[#DA2128] px-6 text-[15px] font-semibold text-white hover:bg-[#AF0007]"
                   >
                     Remove
                   </button>

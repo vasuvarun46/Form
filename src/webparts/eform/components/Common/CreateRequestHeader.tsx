@@ -66,9 +66,8 @@ export default function CreateRequestHeader({
             type="button"
             onClick={onDiscard}
             className={isDesktop
-              ? "h-10 w-[106px] rounded-[8px] border border-[#EBEBEB] bg-[#EBEBEB] text-sm font-semibold text-[#2f2f2f] hover:bg-[#dfe3e6]"
-              : "h-11 min-w-0 w-full px-2 rounded-lg border border-[#EBEBEB] bg-[#EBEBEB] text-[13px] leading-none font-semibold text-[#2f2f2f] hover:bg-[#dfe3e6]"}
-
+              ? "h-10 w-[106px] rounded-[8px] border border-[#EBEBEB] bg-[#EBEBEB] text-sm font-semibold text-[#2f2f2f] hover:bg-[#E8E8E8]"
+              : "h-11 min-w-0 w-full px-2 rounded-lg border border-[#EBEBEB] bg-[#EBEBEB] text-[13px] leading-none font-semibold text-[#2f2f2f] hover:bg-[#E8E8E8]"}
           >
             Discard
           </button>
@@ -83,8 +82,7 @@ export default function CreateRequestHeader({
               font-semibold transition-colors
               ${draftDisabled
                   ? "bg-[#D9D9D9] text-[#7f7f7f] cursor-not-allowed"
-                  : "bg-black text-white hover:opacity-90"
-
+                  : "bg-[#000000] text-white hover:bg-[#3B3B3B]"
                 }
             `}
             >
@@ -98,11 +96,11 @@ export default function CreateRequestHeader({
             onClick={submitDisabled ? undefined : onSubmit}
             className={[
               isDesktop
-                ? "h-10 w-[170px] rounded-[8px] border text-sm font-semibold"
-                : "h-11 min-w-0 w-full px-2 rounded-lg border text-[13px] leading-none font-semibold",
+                ? "h-10 w-[170px] rounded-[8px] border-2 text-sm font-semibold"
+                : "h-11 min-w-0 w-full px-2 rounded-lg border-2 text-[13px] leading-none font-semibold",
               submitDisabled
                 ? "border-[#D9D9D9] bg-[#D9D9D9] text-[#7f7f7f] cursor-not-allowed"
-                : "border-[#16a34a] bg-[#eaf7ea] text-[#0a8f2f] hover:bg-[#ddf1de]"
+                : "border-[#009A11] bg-[#E6F5E7] text-[#009A11] hover:bg-[#009A11] hover:text-white"
             ].join(" ")}
 
           >

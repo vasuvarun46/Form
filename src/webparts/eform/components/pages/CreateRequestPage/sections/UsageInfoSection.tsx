@@ -73,12 +73,16 @@ function FieldSelect({
         </span>
 
         <div
-          className="absolute left-3 top-1.5 text-[10px] text-gray-500 pointer-events-none" style={{ backgroundColor: bgColor }}
+          className="absolute left-3 top-1.5 text-[10px] text-gray-500 pointer-events-none"
+          style={{ backgroundColor: bgColor }}
         >
-          <span className="text-[#E56D71]">*</span>{label}        </div>
+          <span className="text-[#E56D71]">*</span>{label}
+        </div>
       </div>
 
-      {error && <div className="mt-1 text-[10px] text-[#E56D71]">{error}</div>}    </div>
+      {error && <div className="mt-1 text-[10px] text-[#E56D71]">{error}</div>}
+    </div>
+
   );
 }
 
@@ -212,7 +216,7 @@ export default function UsageInfoSection({
         Usage Information
       </h2>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-x-10 gap-y-4 -ml-3">        {/* ROW 1 — grayBackground only when isExcelMode (disabled=true) */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-x-10 gap-y-4 -ml-3">
         <FieldSelect
           label="Purpose"
           value={usage.purpose}

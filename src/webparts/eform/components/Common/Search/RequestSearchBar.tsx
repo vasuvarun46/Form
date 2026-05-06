@@ -155,7 +155,7 @@ export default function RequestSearchBar(props: RequestSearchBarProps): JSX.Elem
 
   return (
     <div className="w-full max-w-[640px]" ref={wrapRef}>
-      <div className="h-10 w-full flex items-stretch overflow-hidden rounded-md border border-[#ececec] bg-white">
+      <div className="h-10 w-full flex items-stretch rounded-md border border-[#ececec] bg-white">
         {/* ✅ Custom dropdown button (looks like image) */}
         <button
           ref={btnRef}
@@ -167,8 +167,9 @@ export default function RequestSearchBar(props: RequestSearchBarProps): JSX.Elem
             px-3 pr-9
             text-[11px] text-gray-800
             flex items-center justify-between
-            hover:bg-[#f1f1f1]
+            hover:!bg-[#EBEBEB]
             focus:outline-none focus-visible:outline-none
+            rounded-l-md
           "
         >
           <span className="truncate">{label}</span>
@@ -181,7 +182,7 @@ export default function RequestSearchBar(props: RequestSearchBarProps): JSX.Elem
         </button>
 
         {/* Input with X clear button */}
-        <div className="relative flex-1">
+        <div className="relative flex-1 hover:!border-2 hover:!border-[#76A8E8]">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
             <IconSearch />
           </span>
@@ -215,7 +216,7 @@ export default function RequestSearchBar(props: RequestSearchBarProps): JSX.Elem
         <button
           type="button"
           onClick={doSearch}
-          className="h-full px-6 bg-[#0a66d8] text-white text-[11px] font-semibold hover:bg-[#095ec7]"
+          className="h-full px-6 bg-[#2172DA] text-white text-[11px] font-semibold rounded-r-md border-2 border-transparent hover:!bg-[#F0F7FF] hover:!text-[#81AFEB] hover:!border-[#76A8E8]"
         >
           Search
         </button>

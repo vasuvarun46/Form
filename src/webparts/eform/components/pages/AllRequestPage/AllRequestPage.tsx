@@ -89,7 +89,7 @@ export default function AllRequestPage(
 
   const [pageSize] = React.useState<number>(15);
   const [pageIndex, setPageIndex] = React.useState<number>(0);
-  const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
+  const [sortState, setSortState] = React.useState<0 | 1>(0);
 
   const [searchDraft, setSearchDraft] = React.useState<string>("");
   const [searchText, setSearchText] = React.useState<string>("");
@@ -199,35 +199,38 @@ export default function AllRequestPage(
   ===================================================== */
 
   const filteredRows: Row[] = React.useMemo(() => {
+    const seen = new Set<string>();
+    const deduped: Row[] = [];
+    for (const r of rows) {
+      const dedupKey = r.id && r.id !== "-" ? r.id : String(r.spId);
+      if (!seen.has(dedupKey)) {
+        seen.add(dedupKey);
+        deduped.push(r);
+      }
+    }
+    return deduped;
+  }, [rows, statusFilter, purposeFilter, costCenterFilter, expectedFrom, expectedTo, searchText]);
 
-
-    const out: Row[] = [...rows];
-
-    out.sort((a, b) => {
-      // Sort by transaction ID
-      const cmp = a.id.localeCompare(b.id, undefined, { numeric: true });
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-
-    return out;
-  }, [
-    rows,
-    statusFilter,
-    purposeFilter,
-    costCenterFilter,
-    expectedFrom,
-    expectedTo,
-    searchText,
-    sortDir,
-  ]);
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredRows.length / pageSize)
-  );
+  const sortedRows: Row[] = React.useMemo(() => {
+    const key = (r: Row): string => String(r.status || "").trim().toLowerCase();
+    const isSubmitted = (r: Row): boolean => key(r) === "submitted";
+    const isInApproval = (r: Row): boolean => key(r) === "in approval" || key(r) === "in-approval";
+    const isApproved = (r: Row): boolean => key(r) === "approved";
+    const isRejected = (r: Row): boolean => key(r) === "rejected";
+    const defaultOrder: Row[] = [
+      ...filteredRows.filter(isSubmitted),
+      ...filteredRows.filter(isInApproval),
+      ...filteredRows.filter(isApproved),
+      ...filteredRows.filter(isRejected),
+      ...filteredRows.filter(r => !isSubmitted(r) && !isInApproval(r) && !isApproved(r) && !isRejected(r)),
+    ];
+    return sortState === 1 ? [...defaultOrder].reverse() : defaultOrder;
+  }, [filteredRows, sortState]);
+  const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
 
   const safePageIndex = Math.min(pageIndex, totalPages - 1);
 
-  const pageRows: Row[] = filteredRows.slice(
+  const pageRows: Row[] = sortedRows.slice(
     safePageIndex * pageSize,
     safePageIndex * pageSize + pageSize
   );
@@ -273,7 +276,7 @@ export default function AllRequestPage(
   };
 
   const onSelectAllRequests = (): void => {
-    const ids = filteredRows.map((r) => String(r.id));
+    const ids = sortedRows.map((r) => String(r.id));
     setSelectedIds(ids);
     setManualSelectedIds(ids);
     setIsAllSelected(true);
@@ -400,8 +403,8 @@ export default function AllRequestPage(
 
     const data =
       mode === "all"
-        ? filteredRows
-        : filteredRows.filter((r) =>
+        ? sortedRows
+        : sortedRows.filter((r) =>
           manualSelectedIds.includes(String(r.id))
         );
 
@@ -622,90 +625,94 @@ export default function AllRequestPage(
   }, [loadAll]);
 
   React.useEffect(() => {
+    setPageIndex(0);
+  }, [sortState]);
+
+  React.useEffect(() => {
     loadStatusOptions().catch(() => undefined);
     loadPurposeOptions().catch(() => undefined);
     loadCostCenterOptions().catch(() => undefined);
   }, []);
 
   // ✅ FIXED — no user filter, counts ALL records across all users
-const getApprovedRejectedCounts = React.useCallback(async (): Promise<{
-  approved: number;
-  rejected: number;
-  submitted: number;
-}> => {
-  const siteUrl = context.pageContext.web.absoluteUrl;
+  const getApprovedRejectedCounts = React.useCallback(async (): Promise<{
+    approved: number;
+    rejected: number;
+    submitted: number;
+  }> => {
+    const siteUrl = context.pageContext.web.absoluteUrl;
 
-  // ✅ No Requester/EMail filter — AllRequestPage sees ALL users' records
-  const buildUrl = (status: string): string =>
-    `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items` +
-    `?$select=Id` +
-    `&$filter=WorkflowStatus eq '${status}'` +
-    `&$top=5000`;
+    // ✅ No Requester/EMail filter — AllRequestPage sees ALL users' records
+    const buildUrl = (status: string): string =>
+      `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items` +
+      `?$select=Id` +
+      `&$filter=WorkflowStatus eq '${status}'` +
+      `&$top=5000`;
 
-  const fetchCount = async (status: string): Promise<number> => {
-    const res: SPHttpClientResponse = await context.spHttpClient.get(
-      buildUrl(status),
-      SPHttpClient.configurations.v1,
-      {
-        headers: {
-          Accept: "application/json;odata=nometadata",
-          "odata-version": "",
-        },
-      }
-    );
-    if (!res.ok) throw new Error(`Failed to fetch ${status} count`);
-    const data = await res.json();
-    return (data?.value?.length ?? 0) as number;
-  };
+    const fetchCount = async (status: string): Promise<number> => {
+      const res: SPHttpClientResponse = await context.spHttpClient.get(
+        buildUrl(status),
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            Accept: "application/json;odata=nometadata",
+            "odata-version": "",
+          },
+        }
+      );
+      if (!res.ok) throw new Error(`Failed to fetch ${status} count`);
+      const data = await res.json();
+      return (data?.value?.length ?? 0) as number;
+    };
 
-  const [approved, rejected, submitted] = await Promise.all([
-    fetchCount("Approved"),
-    fetchCount("Rejected"),
-    fetchCount("Submitted"),  // ✅ tracks new submissions from any user
-  ]);
+    const [approved, rejected, submitted] = await Promise.all([
+      fetchCount("Approved"),
+      fetchCount("Rejected"),
+      fetchCount("Submitted"),  // ✅ tracks new submissions from any user
+    ]);
 
-  return { approved, rejected, submitted };
-}, [context]);
+    return { approved, rejected, submitted };
+  }, [context]);
 
   /* ── 3. Compare counts, re-render + reload if increased ── */
   const checkAndUpdateCounts = React.useCallback(
-  async (isInitialLoad: boolean): Promise<void> => {
-    try {
-      // ✅ correctly named variables matching what they actually hold
-      const {
-        approved: currentApproved,
-        rejected: currentRejected,
-        submitted: currentSubmitted,   // ✅ was wrongly named currentDraft
-      } = await getApprovedRejectedCounts();
+    async (isInitialLoad: boolean): Promise<void> => {
+      try {
+        // ✅ correctly named variables matching what they actually hold
+        const {
+          approved: currentApproved,
+          rejected: currentRejected,
+          submitted: currentSubmitted,   // ✅ was wrongly named currentDraft
+        } = await getApprovedRejectedCounts();
 
-      const prevApproved  = Number(localStorage.getItem(STORAGE_KEY_APPROVED)  ?? 0);
-      const prevRejected  = Number(localStorage.getItem(STORAGE_KEY_REJECTED)  ?? 0);
-      const prevSubmitted = Number(localStorage.getItem(STORAGE_KEY_SUBMITTED) ?? 0); // ✅ correct name
+        const prevApproved = Number(localStorage.getItem(STORAGE_KEY_APPROVED) ?? 0);
+        const prevRejected = Number(localStorage.getItem(STORAGE_KEY_REJECTED) ?? 0);
+        const prevSubmitted = Number(localStorage.getItem(STORAGE_KEY_SUBMITTED) ?? 0); // ✅ correct name
 
-      const hasIncreased =
-        !isInitialLoad &&
-        (
-          currentApproved  > prevApproved  ||
-          currentRejected  > prevRejected  ||
-          currentSubmitted > prevSubmitted  // ✅ correct name
-        );
+        const hasIncreased =
+          !isInitialLoad &&
+          (
+            currentApproved > prevApproved ||
+            currentRejected > prevRejected ||
+            currentSubmitted > prevSubmitted  // ✅ correct name
+          );
 
-      if (hasIncreased) {
-        setCountIncreased((prev) => !prev);
-        await loadAll(true);
+        if (hasIncreased) {
+          setCountIncreased((prev) => !prev);
+          await loadAll(true);
+        }
+
+        // ✅ persist all 3 with correct variable names
+        localStorage.setItem(STORAGE_KEY_APPROVED, String(currentApproved));
+        localStorage.setItem(STORAGE_KEY_REJECTED, String(currentRejected));
+        localStorage.setItem(STORAGE_KEY_SUBMITTED, String(currentSubmitted)); // ✅ correct
+
+      } catch (err) {
+        console.error("[AllRequestPage] checkAndUpdateCounts error:", err);
       }
-
-      // ✅ persist all 3 with correct variable names
-      localStorage.setItem(STORAGE_KEY_APPROVED,  String(currentApproved));
-      localStorage.setItem(STORAGE_KEY_REJECTED,  String(currentRejected));
-      localStorage.setItem(STORAGE_KEY_SUBMITTED, String(currentSubmitted)); // ✅ correct
-
-    } catch (err) {
-      console.error("[AllRequestPage] checkAndUpdateCounts error:", err);
-    }
-  },
-  [getApprovedRejectedCounts, loadAll]
-);
+    },
+    [getApprovedRejectedCounts, loadAll]
+  );
 
   React.useEffect(() => {
     checkAndUpdateCounts(true).catch(console.error);  // initial — no re-render
@@ -897,11 +904,12 @@ const getApprovedRejectedCounts = React.useCallback(async (): Promise<{
         setPageIndex(0);
       }}
       onResetPage={() => setPageIndex(0)}
-      onSortToggle={() =>
-        setSortDir((d) => (d === "asc" ? "desc" : "asc"))
-      }
+      onSortToggle={() => {
+        setSortState((prev) => (prev === 0 ? 1 : 0));
+        setPageIndex(0);
+      }}
       pageRows={pageRows}
-      filteredRows={filteredRows}
+      filteredRows={sortedRows}
       columns={columns}
       pageSize={pageSize}
       safePageIndex={safePageIndex}

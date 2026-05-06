@@ -316,11 +316,8 @@ export default function AllRequestRender({
                     <button
                       onClick={goFirst}
                       disabled={safePageIndex === 0}
-                      className="h-7 px-2.5 rounded-md border text-[12px] font-medium
-                bg-white border-gray-300 text-[#0a66d8]
-                hover:bg-[#e6f0fb]
-                disabled:bg-gray-100 disabled:text-gray-500
-                disabled:border-gray-200 disabled:cursor-not-allowed"
+                      className="h-7 px-2.5 rounded-md border text-[12px] font-medium bg-white border-gray-300 text-[#2172DA] hover:bg-[#2172DA] hover:text-white disabled:cursor-not-allowed disabled:border-[#D9D9D9] disabled:bg-[#D9D9D9] disabled:text-gray-500"
+
                     >
                       First
                     </button>
@@ -328,11 +325,8 @@ export default function AllRequestRender({
                     <button
                       onClick={goPrev}
                       disabled={safePageIndex === 0}
-                      className="h-7 px-2.5 rounded-md border text-[12px] font-medium
-                bg-white border-gray-300 text-[#0a66d8]
-                hover:bg-[#e6f0fb]
-                disabled:bg-gray-100 disabled:text-gray-500
-                disabled:border-gray-200 disabled:cursor-not-allowed"
+                      className="h-7 px-2.5 rounded-md border text-[12px] font-medium bg-white border-gray-300 text-[#2172DA] hover:bg-[#2172DA] hover:text-white disabled:cursor-not-allowed disabled:border-[#D9D9D9] disabled:bg-[#D9D9D9] disabled:text-gray-500"
+
                     >
                       Previous
                     </button>
@@ -344,11 +338,7 @@ export default function AllRequestRender({
                     <button
                       onClick={goNext}
                       disabled={safePageIndex >= totalPages - 1}
-                      className="h-7 px-2.5 rounded-md border text-[12px] font-medium
-                bg-white border-gray-300 text-[#0a66d8]
-                hover:bg-[#e6f0fb]
-                disabled:bg-gray-100 disabled:text-gray-500
-                disabled:border-gray-200 disabled:cursor-not-allowed"
+                      className="h-7 px-2.5 rounded-md border text-[12px] font-medium bg-white border-gray-300 text-[#2172DA] hover:bg-[#2172DA] hover:text-white disabled:cursor-not-allowed disabled:border-[#D9D9D9] disabled:bg-[#D9D9D9] disabled:text-gray-500"
                     >
                       Next
                     </button>
@@ -356,11 +346,7 @@ export default function AllRequestRender({
                     <button
                       onClick={goLast}
                       disabled={safePageIndex >= totalPages - 1}
-                      className="h-7 px-2.5 rounded-md border text-[12px] font-medium
-                bg-white border-gray-300 text-[#0a66d8]
-                hover:bg-[#e6f0fb]
-                disabled:bg-gray-100 disabled:text-gray-500
-                disabled:border-gray-200 disabled:cursor-not-allowed"
+                      className="h-7 px-2.5 rounded-md border text-[12px] font-medium bg-white border-gray-300 text-[#2172DA] hover:bg-[#2172DA] hover:text-white disabled:cursor-not-allowed disabled:border-[#D9D9D9] disabled:bg-[#D9D9D9] disabled:text-gray-500"
                     >
                       Last
                     </button>

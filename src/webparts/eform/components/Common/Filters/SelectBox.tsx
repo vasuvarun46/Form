@@ -192,7 +192,7 @@ export default function SelectBox({
         className={`
 w-full border-2 border-[#e5e7eb]  bg-[#F8F8F8]
 px-3 py-2 text-left rounded-lg
-hover: bg-gray-50
+hover:border-[#A3A3A3]
 focus:outline-none
 ${open ? "rounded-b-none border-b-0" : ""}
 `}

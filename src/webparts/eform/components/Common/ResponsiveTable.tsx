@@ -160,12 +160,12 @@ export function ResponsiveTable<T extends BaseRow>({
         </div>
 
         {/* Title */}
-        <div className="text-[13px] font-semibold text-gray-800 mb-1">
+        <div className="text-[13px] font-bold text-gray-800 mb-1">
           No search results found
         </div>
 
         {/* Subtitle */}
-        <div className="text-[12px] text-gray-500">
+        <div className="text-[12px] font-semibold text-[#9F9F9F]">
           Try changing the filters or search terms.
         </div>
       </div>
@@ -303,12 +303,12 @@ export function ResponsiveTable<T extends BaseRow>({
                 </div>
 
                 {/* Title */}
-                <div className="text-[13px] font-bold text-gray-800 mb-1">
+                <div className="text-[13px] font-semibold text-gray-800 mb-1">
                   No search results found
                 </div>
 
                 {/* Subtitle */}
-                <div className="text-[12px] font-semibold text-[#9F9F9F]">
+                <div className="text-[12px] text-gray-500">
                   Try changing the filters or search terms.
                 </div>
 
