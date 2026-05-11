@@ -597,10 +597,10 @@ const _userDataCache = new Map<string, ISuparaItem[]>();
 export const getUserDataFromSharePoint = async (
   context: WebPartContext
 ): Promise<ISuparaItem[]> => {
-    const email = context.pageContext.user.email;
-    if (_userDataCache.has(email)) return _userDataCache.get(email)!;
+  const email = context.pageContext.user.email;
+  if (_userDataCache.has(email)) return _userDataCache.get(email)!;
   try {
-  
+
     const siteUrl = context.pageContext.web.absoluteUrl;
     const safeEmail = email.replace(/'/g, "''");
 
@@ -670,7 +670,9 @@ export const getUserDataFromSharePoint = async (
     if (!res.ok) return [];
 
     const data = await res.json();
-    return (data.value ?? []) as ISuparaItem[];
+    const result = (data.value ?? []) as ISuparaItem[];
+    _userDataCache.set(email, result);
+    return result;
 
   } catch (e) {
     console.error("Error fetching data from EForm Users:", e);
