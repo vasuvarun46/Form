@@ -592,11 +592,15 @@ export const getCurrentUserId = async (context: WebPartContext): Promise<number>
   return id;
 };
 
+const _userDataCache = new Map<string, ISuparaItem[]>();
+
 export const getUserDataFromSharePoint = async (
   context: WebPartContext
 ): Promise<ISuparaItem[]> => {
-  try {
     const email = context.pageContext.user.email;
+    if (_userDataCache.has(email)) return _userDataCache.get(email)!;
+  try {
+  
     const siteUrl = context.pageContext.web.absoluteUrl;
     const safeEmail = email.replace(/'/g, "''");
 

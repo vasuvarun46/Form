@@ -30,17 +30,10 @@ export default function CreateRequestHeader({
   const isDesktop = useIsDesktop(900);
   return (
     <BaseInnerHeader
-      title="Create request"
-      subtitle={
-        <div className={isDesktop ? "flex items-center gap-2 flex-nowrap" : "flex items-center gap-1 flex-wrap"}>
-          <span
-            className="text-[#6099E3] cursor-pointer hover:underline text-xs"
-            onClick={() => onNavigate("my")}
-          >
-            My requests
-          </span>
-          <span className="text-xs text-gray-500">
-            / Create request details
+      title={
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={isDesktop ? "text-[18px] font-semibold text-gray-900" : "text-[16px] font-semibold text-gray-900"}>
+            Create request
           </span>
           {showExcelNotice && (
             <div
@@ -58,6 +51,19 @@ export default function CreateRequestHeader({
             </div>
           )}
 
+        </div>
+      }
+            subtitle={
+        <div className={isDesktop ? "flex items-center gap-2 flex-nowrap" : "flex items-center gap-1 flex-wrap"}>
+          <span
+            className="text-blue-600 cursor-pointer hover:underline text-xs"
+            onClick={() => onNavigate("my")}
+          >
+            My requests
+          </span>
+          <span className="text-xs text-gray-500">
+            / Create request details
+          </span>
         </div>
       }
       right={

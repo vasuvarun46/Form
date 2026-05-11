@@ -21,6 +21,8 @@ import { RouteState, SecurityPermissions } from "./spHelpers";
 import { ExportActionInfo } from "./pages/ExportActionInfo";
 import { submitApprovalDecision } from "./pages/ApprovalDecisionService";
 
+import { getUserDataFromSharePoint } from "./pages/CreateRequestPage/CreateRequestService";
+
 export type Route = "home" | "create" | "exportPdf" | "team" | "all" | "my";
 export type ExportSource = "my" | "team" | "all";
 
@@ -192,6 +194,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
     };
 
     loadSecurity().catch(() => undefined);
+    getUserDataFromSharePoint(context).catch(() => undefined);
 
     return () => {
       cancelled = true;

@@ -2,7 +2,7 @@ import * as React from "react";
 import { useIsDesktop } from "../../hooks/useIsDesktop";
 
 type BaseInnerHeaderProps = {
-  title: string;
+  title: React.ReactNode;
   subtitle?: React.ReactNode;
   right?: React.ReactNode;
   children?: React.ReactNode;

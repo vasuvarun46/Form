@@ -803,7 +803,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
             {/* ✅ Manual Add Popup */}
             {inventoryMode === "manual" && manualPopupOpen && manualProduct && (
               <div className="relative h-0 w-[560px] max-w-full">
-                <div className="absolute left-0 top-2 z-20 w-full overflow-hidden rounded-md border border-[#e7e7e7] bg-[#F8F8F8] shadow-sm">
+                <div className="absolute left-0 top-0 z-20 w-full overflow-hidden rounded-md border border-[#e7e7e7] bg-[#F8F8F8] shadow-sm">
                   <div className="bg-[#F8F8F8] px-4 pt-3 pb-4">
                     <table className="w-full text-[12px]">
                       <thead className="bg-[#F8F8F8] text-gray-700">
