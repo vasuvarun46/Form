@@ -92,11 +92,11 @@ export default function AppShell({
 
 
           {isHome ? (
-            <div className="flex-1 overflow-y-auto overflow-x-hidden">
+            <div className="eform-main-scroll flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain [scrollbar-gutter:stable]">
               {children}
             </div>
           ) : (
-            <div className="flex-1 min-h-0 w-full max-w-full px-0.1 sm:px-6 lg:px-1 py-0.1 sm:py-1 overflow-y-auto overflow-x-hidden">
+            <div className="eform-main-scroll flex-1 min-h-0 w-full max-w-full px-0.1 sm:px-6 lg:px-1 py-0.1 sm:py-1 overflow-y-auto overflow-x-hidden overscroll-y-contain [scrollbar-gutter:stable]">
               {children}
             </div>
           )}

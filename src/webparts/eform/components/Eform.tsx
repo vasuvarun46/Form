@@ -55,11 +55,31 @@ const _dlParams = (() => {
   return undefined;
 })();
 
+// ── Parse hash-based deep-link route (my / team / all / create) ──
+// SPFx workbench runs the web part inside a same-origin iframe, so
+// window.location is the iframe URL — the address-bar URL lives in window.top.
+const _HASH_ROUTES: Record<string, Route> = { "/my": "my", "/team": "team", "/all": "all", "/create": "create" };
+const _getTopHash = (): string => {
+  try { return window.top?.location?.hash ?? window.location.hash; }
+  catch { return window.location.hash; }
+};
+const _hashRoute = (() => {
+  try {
+    const h = _getTopHash();
+    const path = h.startsWith("#") ? h.slice(1) : h;
+    return _HASH_ROUTES[path] as Route | undefined;
+  } catch { return undefined; }
+})();
+// Hash route is ignored when a PDF deep-link query param is present
+const _initialHashRoute = _dlParams ? undefined : _hashRoute;
+
 const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => {
   // Only go straight to exportPdf when RequestId alone (no TransactionId to validate)
   const _needsValidation = !!(_dlParams?.transactionId);
   const [route, setRoute] = React.useState<Route>(
-    _dlParams ? (_needsValidation ? "home" : "exportPdf") : "home"
+    _dlParams
+      ? (_needsValidation ? "home" : "exportPdf")
+      : (_initialHashRoute || "home")
   );
   const [selectedSpId, setSelectedSpId] = React.useState<number | undefined>(
     _dlParams && !_needsValidation ? _dlParams.requestId : undefined
@@ -98,6 +118,18 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
       emailOwnBulkUploadFinished: true,
     });
 
+  // ── After permissions load, validate the hash-based initial route ──
+  // If the user lacks access (e.g. #/all for a non-FinanceAdmin), fall back to home.
+  const _hashValidated = React.useRef(false);
+  React.useEffect(() => {
+    if (!permissionsReady || _hashValidated.current || !_initialHashRoute) return;
+    _hashValidated.current = true;
+    if (!canAccessRoute(permissions, _initialHashRoute)) {
+      setRoute("home");
+      try { history.replaceState(null, "", "#"); } catch { /* ignore */ }
+    }
+  }, [permissionsReady, permissions]);
+
   const approvalApiKeyRef = React.useRef<string>("");
   const effectiveFlowUrl = runtimeFlowUrl || flowUrl;
 
@@ -134,6 +166,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
       .catch(() => {
         // RequestId not found or API error — go home
         setRoute("home");
+        try { history.replaceState(null, "", "#"); } catch { /* ignore */ }
       });
   }, [context]);
 
@@ -201,14 +234,24 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
     };
   }, [context]);
 
+  const syncHash = (r: Route): void => {
+    const h = (r === "my" || r === "team" || r === "all" || r === "create") ? `#/${r}` : "#";
+    // Update the address-bar URL. In the SPFx workbench iframe, window.top holds
+    // the real browser URL; on a production SharePoint page both are the same.
+    try { window.top?.history?.replaceState(null, "", h); } catch { /* cross-origin guard */ }
+    try { history.replaceState(null, "", h); } catch { /* ignore */ }
+  };
+
   const safeNavigate = (r: Route, state?: RouteState): void => {
     if (!canAccessRoute(permissions, r)) {
       setRoute("home");
       setRouteState(undefined);
+      syncHash("home");
       return;
     }
     setRouteState(state);
     setRoute(r);
+    syncHash(r);
   };
 
   const getApprovalApiKey = React.useCallback(async (): Promise<string> => {
@@ -337,10 +380,18 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
   // ── REMOVED: buildExportActionHandlers ──
   // actionHandlers replaced by dedicated onBypass prop on ExportPDFPage
 
+  // Detect Firefox — its ETP blocks SharePoint silent-auth iframes causing slow/failed loads
+  const isFirefox = typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("firefox");
+
   const renderPage = (): JSX.Element => {
     if (!permissionsReady) {
       return (
         <div className="p-6 text-[12px] text-gray-600">
+          {isFirefox && (
+            <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-[12px] text-blue-800">
+              <strong>Firefox detected:</strong> If the page is slow or not loading, click the shield icon (&#128737;) in the address bar and turn off Enhanced Tracking Protection for this site, then refresh.
+            </div>
+          )}
           <Loading />
         </div>
       );

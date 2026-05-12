@@ -10,7 +10,7 @@ function Info({ label, value }: { label: string; value: React.ReactNode }): JSX.
   return (
     <div className="flex items-start text-[13px] pdf-thai min-w-0">
       <span className="text-gray-500 mr-2 whitespace-nowrap">{label}</span>
-      <span className="text-gray-900 font-medium whitespace-nowrap overflow-hidden text-ellipsis">
+      <span className="text-gray-900 font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
         {value}
       </span>
     </div>
