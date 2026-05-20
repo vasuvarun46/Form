@@ -1044,6 +1044,36 @@ export default function CreateRequestRender(props: Props): JSX.Element {
               </div>
             )}
 
+            {inventoryMode === "excel" && items.length > 0 && draftId && (
+              <div className="mb-4 rounded-md border border-[#e7e7e7] bg-white p-4">
+                <div className="mt-3 rounded-md bg-[#f7f7f7] p-3 text-[12px] text-gray-700">
+                  <div className="text-[11px] text-gray-500">Selected file</div>
+                  <div className="mt-1">
+                    {selectedExcelFile ? (
+                      <span className="inline-flex items-center gap-2">
+                        <Icon
+                          iconName="ExcelDocument"
+                          style={{ fontSize: 18, color: "#217346" }}
+                        />
+                        <span className="text-[12px] text-gray-800 truncate max-w-[200px]">
+                          {selectedExcelFile.name}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-gray-500">No file selected</span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={openExcelHelp}
+                  className="mt-2 text-[11px] text-[#6099E3] hover:underline"
+                >
+                  See how to upload the Excel file successfully
+                </button>
+              </div>
+            )}
+
             {items.length > 0 && inventoryMode === "excel" && draftId && (
               <div className="mt-4 overflow-hidden rounded-lg border border-[#e7e7e7] bg-white mx-auto">
                 <table ref={productTableRef} className="w-full table-auto text-[12px] sm:text-[13px] text-left">

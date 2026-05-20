@@ -75,6 +75,8 @@ type Props = {
   onExportExcel: (mode: "all" | "selected") => Promise<void>;
 
   onSearchWithField?: (args: { field: SearchFieldKey; text: string }) => void;
+  onClear?: () => void;   // ✅ ADD THIS
+
   canExport: boolean;
   showDisabledExport: boolean;
   manualSelectedCount: number;
@@ -126,6 +128,7 @@ export default function AllRequestRender({
   onRestoreManualSelection,
   onExportExcel,
   onSearchWithField,
+  onClear,
   canExport,
   showDisabledExport,
   manualSelectedCount,
@@ -262,6 +265,7 @@ export default function AllRequestRender({
                     setSearchDraft={setSearchDraft}
                     onSearch={onSearch}
                     onSearchWithField={onSearchWithField}
+                    onClear={onClear} 
                   />
 
                   <button

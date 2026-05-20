@@ -93,6 +93,7 @@ export default function AllRequestPage(
 
   const [searchDraft, setSearchDraft] = React.useState<string>("");
   const [searchText, setSearchText] = React.useState<string>("");
+  
 
   const [statusFilter, setStatusFilter] = React.useState<string[]>([]);
   const [purposeFilter, setPurposeFilter] = React.useState<string[]>([]);
@@ -903,6 +904,18 @@ export default function AllRequestPage(
         setSearchText(searchDraft);
         setPageIndex(0);
       }}
+      onSearchWithField={({ field, text }) => {   
+        void field;          
+        setSearchText(text);
+        setPageIndex(0);
+      }}
+      onClear={() => {                             
+        setSearchDraft("");
+        setSearchText("");
+        
+        setPageIndex(0);
+      }}
+
       onResetPage={() => setPageIndex(0)}
       onSortToggle={() => {
         setSortState((prev) => (prev === 0 ? 1 : 0));

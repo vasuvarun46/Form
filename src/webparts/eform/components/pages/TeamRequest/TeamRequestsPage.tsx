@@ -194,12 +194,12 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
   /* =========================================================
      SORT
   ========================================================== */
-    const sortedRows = React.useMemo((): Row[] => {
+  const sortedRows = React.useMemo((): Row[] => {
     const key = (r: Row): string => String(r.status || "").trim().toLowerCase();
-    const isSubmitted  = (r: Row): boolean => key(r) === "submitted";
+    const isSubmitted = (r: Row): boolean => key(r) === "submitted";
     const isInApproval = (r: Row): boolean => key(r) === "in approval" || key(r) === "in-approval";
-    const isApproved   = (r: Row): boolean => key(r) === "approved";
-    const isRejected   = (r: Row): boolean => key(r) === "rejected";
+    const isApproved = (r: Row): boolean => key(r) === "approved";
+    const isRejected = (r: Row): boolean => key(r) === "rejected";
 
     const defaultOrder: Row[] = [
       ...filteredRows.filter(isSubmitted),
@@ -752,6 +752,12 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
                           setSearchText(text);
                           setAppliedSearchText(text);
                         }}
+                        onClear={() => {
+                          setSearchDraft("");
+                          setSearchText("");
+                          setAppliedSearchText("");
+                        }}
+
                       />
                       <button
                         onClick={() => { setSortState((prev) => (prev === 0 ? 1 : 0)); goFirst(); }}
