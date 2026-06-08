@@ -1,6 +1,6 @@
 ﻿import { WebPartContext } from '@microsoft/sp-webpart-base';
 import * as React from 'react';
-import { SPHttpClient } from "@microsoft/sp-http";
+import { SPHttpClient, AadHttpClient } from "@microsoft/sp-http";
 import LogoPng from "../../assets/LOGO.png";
 import { Route } from '../Eform';
 import { ExportActionInfo } from './ExportActionInfo';
@@ -55,7 +55,7 @@ type Props = {
 
 type FieldValuesAsText = Record<string, string>;
 type SpLookupTitle = { Title?: string };
-type SpPersonTitle = { Title?: string };
+type SpPersonTitle = { Title?: string; EMail?: string };
 
 type InventoryRequestItemJson = Record<string, unknown> & {
   Id?: number;
@@ -78,6 +78,7 @@ type ExportData = {
   purposeDetails: string;
   submittedDate: string;
   approverName: string;
+  approverNames?: string;
   approverPosition: string;
   approvedDate: string;
   rejectReason: string;
@@ -194,6 +195,42 @@ function cleanPositionText(value?: string): string {
   const spacedRepeat = /^(.{4,}?)(?:\s+\1)+$/.exec(s);
   if (spacedRepeat && spacedRepeat[1]) return spacedRepeat[1].trim();
   return s;
+}
+
+/* =========================================================
+   fetchSPUserProfile
+   Fetches job title and department from Microsoft Graph API.
+   Uses /me for the current user and /users/{email} for others.
+   Requires User.Read (current user) and User.ReadBasic.All
+   (other users) Graph API permissions in package-solution.json.
+========================================================= */
+async function fetchSPUserProfile(
+  context: WebPartContext,
+  email: string
+): Promise<{ jobTitle: string; department: string }> {
+  const empty = { jobTitle: "", department: "" };
+  try {
+    const graphClient = await context.aadHttpClientFactory.getClient("https://graph.microsoft.com");
+
+    const isCurrentUser =
+      email.toLowerCase().trim() === context.pageContext.user.email.toLowerCase().trim();
+
+    const endpoint = isCurrentUser
+      ? "https://graph.microsoft.com/v1.0/me?$select=displayName,jobTitle,department"
+      : `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email.trim())}?$select=displayName,jobTitle,department`;
+
+    const res = await graphClient.get(endpoint, AadHttpClient.configurations.v1);
+    if (!res.ok) return empty;
+
+    const data = (await res.json()) as { jobTitle?: string; department?: string };
+
+    return {
+      jobTitle: cleanDisplayText(data.jobTitle ?? ""),
+      department: cleanDisplayText(data.department ?? ""),
+    };
+  } catch {
+    return empty;
+  }
 }
 
 function parseMultipleApproverData(raw: unknown): ParsedMultipleApproverData | null {
@@ -429,6 +466,9 @@ export default function ExportPDFPage({
   const autoExportTriggeredRef = React.useRef<boolean>(false);
   const [multipleApproverRaw, setMultipleApproverRaw] = React.useState<unknown>(null);
   const [resolvedApproverNames, setResolvedApproverNames] = React.useState<Record<string, string>>({});
+  const [requestorAadProfile, setRequestorAadProfile] = React.useState<{ jobTitle: string; department: string } | null>(null);
+  const [approverAadPositions, setApproverAadPositions] = React.useState<Record<string, string>>({});
+  const fetchedApproverEmails = React.useRef<Set<string>>(new Set());
   const [pdfBusy, setPdfBusy] = React.useState(false);
   const canAct = exportActionInfo?.canAct ?? false;
   const showReject = exportActionInfo?.showReject ?? false;
@@ -484,11 +524,12 @@ export default function ExportPDFPage({
         const multipleApproverDataInternal = "MultipleApproverData";
         const workflowStatusInternal = "WorkflowStatus";
         const Title = "Title";
+        const ApproverNames = "ApproverNames"
 
         const url =
           `${webUrl}/_api/web/lists/getbytitle('${listTitle}')/items(${spId})` +
-          `?$select=Id,RequestSubmittedOn,${Title},` +
-          `${requesterInternal}/Title,${jobInternal},${deptInternal}/Title,` +
+          `?$select=Id,RequestSubmittedOn,${Title},${ApproverNames},` +
+          `${requesterInternal}/Title,${requesterInternal}/EMail,${jobInternal},${deptInternal}/Title,` +
           `${expectedInternal},${placeInternal},${purposeDetailsInternal},` +
           `${multipleApproverDataInternal},${costInternal}/Title,` +
           `${purposeInternal}/Title,${workflowStatusInternal}` +
@@ -539,6 +580,10 @@ export default function ExportPDFPage({
           typeof expectedRaw === "string" && expectedRaw
             ? formatDateDdMmYyyy(expectedRaw) : "";
 
+        const requesterEmail = safeText(
+          (d[requesterInternal] as SpPersonTitle | undefined)?.EMail || ""
+        );
+
         setExportData({
           requester: safeText((d[requesterInternal] as SpPersonTitle | undefined)?.Title),
           jobPosition: safeText(d[jobInternal]),
@@ -549,6 +594,7 @@ export default function ExportPDFPage({
           purpose: safeText((d[purposeInternal] as SpLookupTitle | undefined)?.Title),
           purposeDetails: safeText(d[purposeDetailsInternal]),
           Title: safeText(d[Title]),
+          approverNames: safeText(d[ApproverNames]),
           submittedDate,
           approverName,
           approverPosition,
@@ -557,6 +603,16 @@ export default function ExportPDFPage({
           approvalStatus,
           workflowStatus,
         });
+
+        // Fetch requestor's job title and department from Azure AD (via SP User Profile service)
+        if (requesterEmail) {
+          try {
+            const aadProfile = await fetchSPUserProfile(context, requesterEmail);
+            setRequestorAadProfile(aadProfile);
+          } catch {
+            // Silently fall back to SharePoint field data
+          }
+        }
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : String(e));
         setMultipleApproverRaw(null);
@@ -577,7 +633,16 @@ export default function ExportPDFPage({
 
 
   const resolvedRequestorName = cleanDisplayText(exportData?.requester);
-  const resolvedRequestorPosition = cleanPositionText(exportData?.jobPosition) || "-";
+  // Prefer Azure AD job title; fall back to SharePoint JobPosition field
+  const resolvedRequestorPosition =
+    cleanPositionText(requestorAadProfile?.jobTitle) ||
+    cleanPositionText(exportData?.jobPosition) ||
+    "-";
+  // Prefer Azure AD department; fall back to SharePoint Department lookup
+  const resolvedRequestorDepartment =
+    cleanDisplayText(exportData?.department) ||
+    cleanDisplayText(requestorAadProfile?.department) ||
+    "";
 
   // =========================================================
   // ✅ SIMPLIFIED footerApprovers — no SingleApprover/MultipleApprover branching.
@@ -598,7 +663,7 @@ export default function ExportPDFPage({
       if (actedStage) {
         return [{
           slot: 1,
-          name: cleanDisplayText(actedStage.approverName),
+          name: cleanDisplayText(exportData?.approverNames || exportData?.approverName),
           position: cleanDisplayText(actedStage.approverJobPosition || actedStage.approvalRole || ""),
           status: normalizeApprovalStatus(actedStage.action || actedStage.Status),
           date: formatDateDdMmYyyy(actedStage.date || actedStage.Date),
@@ -612,7 +677,7 @@ export default function ExportPDFPage({
       // No one acted yet — fallback to exportData
       return [{
         slot: 1,
-        name: cleanDisplayText(exportData?.approverName),
+        name: cleanDisplayText(exportData?.approverNames || exportData?.approverName),
         position: cleanPositionText(
           exportData?.approverPosition ||
           parsedMultipleApproverData?.stages?.[0]?.approverJobPosition ||
@@ -679,6 +744,7 @@ export default function ExportPDFPage({
   }, [
     parsedMultipleApproverData,
     exportData?.approverName,
+    exportData?.approverNames,
     exportData?.approverPosition,
     exportData?.workflowStatus,
     exportData?.approvalStatus,
@@ -785,6 +851,39 @@ export default function ExportPDFPage({
     resolveNames().catch(() => undefined);
   }, [footerApprovers, context, resolvedApproverNames]);
 
+  // Fetch approver job positions from Azure AD / Entra ID (via SP User Profile service)
+  React.useEffect(() => {
+    const fetchApproverPositions = async (): Promise<void> => {
+      const uniqueEmails = Array.from(
+        new Set(
+          footerApprovers
+            .map((a) => cleanDisplayText(a.approverEmail || "").toLowerCase())
+            .filter((e) => !!e && !fetchedApproverEmails.current.has(e))
+        )
+      );
+      if (!uniqueEmails.length) return;
+
+      // Mark as in-flight before async calls to prevent duplicate fetches
+      uniqueEmails.forEach((e) => fetchedApproverEmails.current.add(e));
+
+      const newPositions: Record<string, string> = {};
+      for (const email of uniqueEmails) {
+        try {
+          const profile = await fetchSPUserProfile(context, email);
+          if (profile.jobTitle) newPositions[email] = profile.jobTitle;
+        } catch {
+          // Silently fall back to position stored in MultipleApproverData
+        }
+      }
+
+      if (Object.keys(newPositions).length > 0) {
+        setApproverAadPositions((prev) => ({ ...prev, ...newPositions }));
+      }
+    };
+
+    fetchApproverPositions().catch(() => undefined);
+  }, [footerApprovers, context]);
+
   const runActionAndNavigate = React.useCallback(
     async (action: PendingAction, comments = ""): Promise<void> => {
       setActionSubmitting(true);
@@ -875,140 +974,140 @@ export default function ExportPDFPage({
   };
 
   React.useEffect(() => {
-  const loadLines = async (): Promise<void> => {
-    try {
-      setLineError("");
-      setLineLoading(true);
-      setLineItems([]);
-      if (!spId) return;
-
-      const webUrl = context.pageContext.web.absoluteUrl;
-      const childListTitle = "InventoryRequestItems";
-      const requestLookupInternal = "RequestID";
-      const colTitle = "Title";
-      const colLineNumber = "LineNumber";
-      const colSku = "SKUCode";
-      const colDesc = "ProductDescription";
-      const colColor = "Color";
-      const colSize = "Size";
-      const colUnitPrice = "UnitPrice";
-      const colQty = "Quantity";
-      const colLineTotal = "LineTotal";
-      const colLookupSource = "LookupSource";
-      const colRowStatus = "RowStatus";
-
-      type ChildRow = Record<string, unknown> & { Id?: number };
-      type SpListResponse<T> = { value?: T[]; "@odata.nextLink"?: string };
-
-      const tryFetch = async (url: string): Promise<SpListResponse<ChildRow>> => {
-        const r = await context.spHttpClient.get(url, SPHttpClient.configurations.v1);
-        if (!r.ok) {
-          const body = await r.text();
-          throw new Error(`SharePoint ${r.status}: ${body}`);
-        }
-        return (await r.json()) as SpListResponse<ChildRow>;
-      };
-
-      // ✅ Paginated fetch — keeps following @odata.nextLink until exhausted
-      const fetchAllPages = async (firstUrl: string): Promise<ChildRow[]> => {
-        const allRows: ChildRow[] = [];
-        let nextUrl: string | undefined = firstUrl;
-
-        while (nextUrl) {
-          const page: SpListResponse<ChildRow> = await tryFetch(nextUrl);
-          const pageRows = Array.isArray(page.value) ? page.value : [];
-          allRows.push(...pageRows);
-          nextUrl = page["@odata.nextLink"] || undefined;
-        }
-
-        return allRows;
-      };
-
-      const selectFields = [
-        "Id",
-        colTitle,
-        colLineNumber,
-        colSku,
-        colDesc,
-        colColor,
-        colSize,
-        colUnitPrice,
-        colQty,
-        colLineTotal,
-        colLookupSource,
-        colRowStatus,
-        `${requestLookupInternal}/Id`,
-      ].join(",");
-
-      // ✅ $top=5000 is the SharePoint max per page — nextLink handles the rest
-      const urlLookup =
-        `${webUrl}/_api/web/lists/getbytitle('${childListTitle}')/items` +
-        `?$select=${selectFields}` +
-        `&$expand=${requestLookupInternal}` +
-        `&$filter=${requestLookupInternal}/Id eq ${spId} and ${colRowStatus} eq 'Active'` +
-        `&$orderby=${colLineNumber} asc` +
-        `&$top=5000`;
-
-      let rowsRaw: ChildRow[];
-
+    const loadLines = async (): Promise<void> => {
       try {
-        rowsRaw = await fetchAllPages(urlLookup);
-      } catch {
-        // Fallback: try without expand (use numeric lookup field directly)
-        const urlNumber =
+        setLineError("");
+        setLineLoading(true);
+        setLineItems([]);
+        if (!spId) return;
+
+        const webUrl = context.pageContext.web.absoluteUrl;
+        const childListTitle = "InventoryRequestItems";
+        const requestLookupInternal = "RequestID";
+        const colTitle = "Title";
+        const colLineNumber = "LineNumber";
+        const colSku = "SKUCode";
+        const colDesc = "ProductDescription";
+        const colColor = "Color";
+        const colSize = "Size";
+        const colUnitPrice = "UnitPrice";
+        const colQty = "Quantity";
+        const colLineTotal = "LineTotal";
+        const colLookupSource = "LookupSource";
+        const colRowStatus = "RowStatus";
+
+        type ChildRow = Record<string, unknown> & { Id?: number };
+        type SpListResponse<T> = { value?: T[]; "@odata.nextLink"?: string };
+
+        const tryFetch = async (url: string): Promise<SpListResponse<ChildRow>> => {
+          const r = await context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+          if (!r.ok) {
+            const body = await r.text();
+            throw new Error(`SharePoint ${r.status}: ${body}`);
+          }
+          return (await r.json()) as SpListResponse<ChildRow>;
+        };
+
+        // ✅ Paginated fetch — keeps following @odata.nextLink until exhausted
+        const fetchAllPages = async (firstUrl: string): Promise<ChildRow[]> => {
+          const allRows: ChildRow[] = [];
+          let nextUrl: string | undefined = firstUrl;
+
+          while (nextUrl) {
+            const page: SpListResponse<ChildRow> = await tryFetch(nextUrl);
+            const pageRows = Array.isArray(page.value) ? page.value : [];
+            allRows.push(...pageRows);
+            nextUrl = page["@odata.nextLink"] || undefined;
+          }
+
+          return allRows;
+        };
+
+        const selectFields = [
+          "Id",
+          colTitle,
+          colLineNumber,
+          colSku,
+          colDesc,
+          colColor,
+          colSize,
+          colUnitPrice,
+          colQty,
+          colLineTotal,
+          colLookupSource,
+          colRowStatus,
+          `${requestLookupInternal}/Id`,
+        ].join(",");
+
+        // ✅ $top=5000 is the SharePoint max per page — nextLink handles the rest
+        const urlLookup =
           `${webUrl}/_api/web/lists/getbytitle('${childListTitle}')/items` +
-          `?$select=Id,${colTitle},${colLineNumber},${colSku},${colDesc},${colColor},${colSize},${colUnitPrice},${colQty},${colLineTotal},${colLookupSource},${colRowStatus},${requestLookupInternal}` +
-          `&$filter=${requestLookupInternal} eq ${spId} and ${colRowStatus} eq 'Active'` +
+          `?$select=${selectFields}` +
+          `&$expand=${requestLookupInternal}` +
+          `&$filter=${requestLookupInternal}/Id eq ${spId} and ${colRowStatus} eq 'Active'` +
           `&$orderby=${colLineNumber} asc` +
           `&$top=5000`;
 
-        rowsRaw = await fetchAllPages(urlNumber);
+        let rowsRaw: ChildRow[];
+
+        try {
+          rowsRaw = await fetchAllPages(urlLookup);
+        } catch {
+          // Fallback: try without expand (use numeric lookup field directly)
+          const urlNumber =
+            `${webUrl}/_api/web/lists/getbytitle('${childListTitle}')/items` +
+            `?$select=Id,${colTitle},${colLineNumber},${colSku},${colDesc},${colColor},${colSize},${colUnitPrice},${colQty},${colLineTotal},${colLookupSource},${colRowStatus},${requestLookupInternal}` +
+            `&$filter=${requestLookupInternal} eq ${spId} and ${colRowStatus} eq 'Active'` +
+            `&$orderby=${colLineNumber} asc` +
+            `&$top=5000`;
+
+          rowsRaw = await fetchAllPages(urlNumber);
+        }
+
+        const rows: LineItem[] = rowsRaw.map((x): LineItem => {
+          const id = Number(x.Id ?? 0);
+          const title = String(x[colTitle] ?? "");
+          const lineNumber = Number(x[colLineNumber] ?? 0);
+          const skuCode = String(x[colSku] ?? "");
+          const productDescription = String(x[colDesc] ?? "");
+          const color = String(x[colColor] ?? "");
+          const size = String(x[colSize] ?? "");
+          const unitPrice = Number(x[colUnitPrice] ?? 0);
+          const quantity = Number(x[colQty] ?? 0);
+          const lineTotalRaw = x[colLineTotal];
+          const lineTotal =
+            typeof lineTotalRaw === "number"
+              ? lineTotalRaw
+              : Number(lineTotalRaw ?? unitPrice * quantity);
+          const lookupSource = String(x[colLookupSource] ?? "");
+          const rowStatus = String(x[colRowStatus] ?? "");
+
+          return {
+            id,
+            title,
+            lineNumber,
+            skuCode,
+            productDescription,
+            color,
+            size,
+            unitPrice,
+            quantity,
+            lineTotal,
+            lookupSource,
+            rowStatus,
+          };
+        });
+
+        setLineItems(rows);
+      } catch (e: unknown) {
+        setLineError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setLineLoading(false);
       }
+    };
 
-      const rows: LineItem[] = rowsRaw.map((x): LineItem => {
-        const id = Number(x.Id ?? 0);
-        const title = String(x[colTitle] ?? "");
-        const lineNumber = Number(x[colLineNumber] ?? 0);
-        const skuCode = String(x[colSku] ?? "");
-        const productDescription = String(x[colDesc] ?? "");
-        const color = String(x[colColor] ?? "");
-        const size = String(x[colSize] ?? "");
-        const unitPrice = Number(x[colUnitPrice] ?? 0);
-        const quantity = Number(x[colQty] ?? 0);
-        const lineTotalRaw = x[colLineTotal];
-        const lineTotal =
-          typeof lineTotalRaw === "number"
-            ? lineTotalRaw
-            : Number(lineTotalRaw ?? unitPrice * quantity);
-        const lookupSource = String(x[colLookupSource] ?? "");
-        const rowStatus = String(x[colRowStatus] ?? "");
-
-        return {
-          id,
-          title,
-          lineNumber,
-          skuCode,
-          productDescription,
-          color,
-          size,
-          unitPrice,
-          quantity,
-          lineTotal,
-          lookupSource,
-          rowStatus,
-        };
-      });
-
-      setLineItems(rows);
-    } catch (e: unknown) {
-      setLineError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLineLoading(false);
-    }
-  };
-
-  loadLines().catch(() => undefined);
-}, [context, spId]);
+    loadLines().catch(() => undefined);
+  }, [context, spId]);
 
   type JsPdfCtor = new (opts: { orientation: "p" | "l"; unit: "mm"; format: "a4" }) => {
     internal: { pageSize: { getWidth: () => number; getHeight: () => number } };
@@ -1260,6 +1359,13 @@ export default function ExportPDFPage({
               cleanDisplayText(approver.approverEmail || "") ||
               "-";
 
+            // AAD job title takes priority; fall back to MultipleApproverData position field
+            const aadPosition = cleanDisplayText(approverAadPositions[approverEmailKey] || "");
+            const displayPosition =
+              aadPosition ||
+              cleanDisplayText(approver.position) ||
+              "-";
+
             return (
               <div key={`footer-approver-${approver.slot}`}>
                 <p className="font-semibold mb-3">
@@ -1270,13 +1376,12 @@ export default function ExportPDFPage({
                   <>
                     <p className="mb-1">
                       <span className="text-gray-400">ชื่อ / Name :</span>{" "}
-                      {/* ✅ Shows SP display name resolved from email */}
                       <span>{displayName}</span>
                     </p>
 
                     <p className="mb-1">
                       <span className="text-gray-400">ตำแหน่ง / Position :</span>{" "}
-                      <span>{cleanDisplayText(approver.position) || "-"}</span>
+                      <span>{displayPosition}</span>
                     </p>
 
                     <p className="mb-1">
@@ -1403,7 +1508,7 @@ export default function ExportPDFPage({
               </div>
               <div>
                 <span className="font-medium text-gray-500">แผนก / Department :</span>{" "}
-                <span className="font-medium text-gray-900">{exportData?.department || " "}</span>
+                <span className="font-medium text-gray-900">{resolvedRequestorDepartment || " "}</span>
               </div>
               <div>
                 <span className="font-medium text-gray-500">ศูนย์ต้นทุน / Cost Center :</span>{" "}

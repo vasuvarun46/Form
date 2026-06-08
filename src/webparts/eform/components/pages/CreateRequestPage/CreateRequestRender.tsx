@@ -7,7 +7,7 @@ import QtyStepper from "./Component/QtyStepper";
 import { IconSearch } from "../../ui/icons";
 import { Route } from "../../Eform";
 import { RouteState } from "../../spHelpers";
-import { downloadTemplateFromLibrary, FlowItemResponse, ISuparaItem, IUsageState } from "./CreateRequestService";
+import { downloadTemplateFromLibrary, FlowItemResponse, ISuparaItem, IUsageState, AadUserProfile } from "./CreateRequestService";
 import { CostCenterOption, IItemRow, InventoryMode, PurposeOption } from "./createRequestTypes";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
 import Loading from "../../ui/Loading";
@@ -41,7 +41,8 @@ type Props = {
   isSubmitting: boolean;
 
   // general info
-  userData: ISuparaItem[]; // you can replace later with real type
+  userData: ISuparaItem[];
+  aadProfile?: AadUserProfile | null;
 
   // usage
   usage: IUsageState;
@@ -174,6 +175,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
     isSubmitting,
     draftLoading,
     userData,
+    aadProfile,
     usage,
     setUsageField,
     purposes,
@@ -478,7 +480,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
           {draftLoading && (
             <Loading />
           )}
-          <GeneralInfoSection userData={userData} card={card} />
+          <GeneralInfoSection userData={userData} card={card} aadProfile={aadProfile} />
           <UsageInfoSection
             usage={usage}
             setField={setUsageField}

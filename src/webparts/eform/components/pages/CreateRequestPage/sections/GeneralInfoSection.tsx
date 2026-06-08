@@ -1,9 +1,10 @@
 import * as React from "react";
-import { ISuparaItem } from "../CreateRequestService";
+import { AadUserProfile, ISuparaItem } from "../CreateRequestService";
 
 type Props = {
   userData: ISuparaItem[];
   card: string;
+  aadProfile?: AadUserProfile | null;
 };
 
 function Info({ label, value }: { label: string; value: React.ReactNode }): JSX.Element {
@@ -17,22 +18,27 @@ function Info({ label, value }: { label: string; value: React.ReactNode }): JSX.
   );
 }
 
-export default function GeneralInfoSection({ userData, card }: Props): JSX.Element {
+export default function GeneralInfoSection({ userData, card, aadProfile }: Props): JSX.Element {
   const u = userData[0];
+
+  // Azure AD takes priority; EForm Users list is the fallback
+  const displayName   = aadProfile?.displayName   || u?.Title              || "-";
+  const jobPosition   = aadProfile?.jobTitle       || u?.Jobposition        || "-";
+  const department    = u?.Department?.Title       || aadProfile?.department || "-";
 
   return (
     <section className={`${card} p-4 sm:p-5`}>
       <h2 className="text-[13px] font-bold text-gray-900 mb-4">General Information</h2>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-10 gap-y-4">
-        <Info label="ชื่อผู้เบิก / Requestor Name :" value={u?.Title || "-"} />
-        <Info label="รหัสพนักงาน / Employee ID :" value={u?.EmployeeID || "-"} />
-        <Info label="อีเมล / Email :" value={u?.Email || "-"} />
+        <Info label="ชื่อผู้เบิก / Requestor Name :" value={displayName} />
+        <Info label="รหัสพนักงาน / Employee ID :"    value={u?.EmployeeID || "-"} />
+        <Info label="อีเมล / Email :"                value={u?.Email      || "-"} />
 
         <div className="lg:col-start-1">
-          <Info label="ตำแหน่ง / Job Position :" value={u?.Jobposition || "-"} />
+          <Info label="ตำแหน่ง / Job Position :" value={jobPosition} />
         </div>
         <div className="lg:col-start-2">
-          <Info label="แผนก / Department :" value={u?.Department?.Title || "-"} />
+          <Info label="แผนก / Department :"      value={department} />
         </div>
       </div>
     </section>

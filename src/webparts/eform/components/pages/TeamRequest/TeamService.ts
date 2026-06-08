@@ -382,6 +382,7 @@ export function useTeamRequestsLogic(
   const STORAGE_KEY_SUBMITTED = "teamreq_submitted_count";
   const STORAGE_KEY_APPROVED = "teamreq_approved_count";
   const STORAGE_KEY_REJECTED = "teamreq_rejected_count";
+  const STORAGE_KEY_IN_APPROVAL = "teamreq_inapproval_count";
 
   // ── Toggles to force re-render when any count increases ──
   const [countIncreased, setCountIncreased] = React.useState<boolean>(false);
@@ -1199,15 +1200,14 @@ export function useTeamRequestsLogic(
   }, [loadAll]);
 
 
-  /* ── Lightweight fetch — counts Submitted, Approved, Rejected
+  /* ── Lightweight fetch — counts Submitted, Approved, Rejected, In Approval
       scoped to records visible to this approver ── */
   const getStatusCounts = React.useCallback(async (): Promise<{
     submitted: number;
     approved: number;
     rejected: number;
+    inApproval: number;
   }> => {
-    // ✅ Filter by CurrentApproverEmail OR canViewRequest approver
-    // For counting, we use a simple filter matching what loadInventoryRequests does
     const buildUrl = (status: string): string =>
       `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items` +
       `?$select=Id,CurrentApproverEmail,ApprovalChainJSON` +
@@ -1228,8 +1228,6 @@ export function useTeamRequestsLogic(
       if (!res.ok) throw new Error(`Failed to fetch ${status} count`);
       const data = await res.json();
 
-      // ✅ Filter client-side to only rows visible to this approver
-      // (same visibility logic as loadInventoryRequests)
       const loginEmail = currentUserEmailRaw;
       const visible = (data?.value || []).filter((it: any) => {
         const currentApproverEmail = String(it?.CurrentApproverEmail || "")
@@ -1247,16 +1245,17 @@ export function useTeamRequestsLogic(
       return visible.length;
     };
 
-    const [submitted, approved, rejected] = await Promise.all([
+    const [submitted, approved, rejected, inApproval] = await Promise.all([
       fetchCount("Submitted"),
       fetchCount("Approved"),
       fetchCount("Rejected"),
+      fetchCount("In Approval"),
     ]);
 
-    return { submitted, approved, rejected };
+    return { submitted, approved, rejected, inApproval };
   }, [context, siteUrl, currentUserEmailRaw]);
 
-  /* ── Compare counts with localStorage, reload silently if increased ── */
+  /* ── Compare counts with localStorage, reload silently if changed ── */
   const checkAndUpdateCounts = React.useCallback(
     async (isInitialLoad: boolean): Promise<void> => {
       try {
@@ -1264,29 +1263,32 @@ export function useTeamRequestsLogic(
           submitted: currentSubmitted,
           approved: currentApproved,
           rejected: currentRejected,
+          inApproval: currentInApproval,
         } = await getStatusCounts();
 
         const prevSubmitted = Number(localStorage.getItem(STORAGE_KEY_SUBMITTED) ?? 0);
         const prevApproved = Number(localStorage.getItem(STORAGE_KEY_APPROVED) ?? 0);
         const prevRejected = Number(localStorage.getItem(STORAGE_KEY_REJECTED) ?? 0);
+        const prevInApproval = Number(localStorage.getItem(STORAGE_KEY_IN_APPROVAL) ?? 0);
 
-        const hasIncreased =
+        const hasChanged =
           !isInitialLoad &&
           (
             currentSubmitted > prevSubmitted ||
             currentApproved > prevApproved ||
-            currentRejected > prevRejected
+            currentRejected > prevRejected ||
+            currentInApproval < prevInApproval  // decrease = request was approved or rejected
           );
 
-        if (hasIncreased) {
-          setCountIncreased((prev) => !prev); // ✅ triggers re-render via key prop
-          await loadAll(true);                    // ✅ reloads table data silently
+        if (hasChanged) {
+          setCountIncreased((prev) => !prev);
+          await loadAll(true);
         }
 
-        // ✅ Always persist latest counts
         localStorage.setItem(STORAGE_KEY_SUBMITTED, String(currentSubmitted));
         localStorage.setItem(STORAGE_KEY_APPROVED, String(currentApproved));
         localStorage.setItem(STORAGE_KEY_REJECTED, String(currentRejected));
+        localStorage.setItem(STORAGE_KEY_IN_APPROVAL, String(currentInApproval));
 
       } catch (err) {
         console.error("[TeamService] checkAndUpdateCounts error:", err);

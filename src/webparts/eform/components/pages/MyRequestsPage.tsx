@@ -85,6 +85,7 @@ interface InventoryRequestSPItem {
   RequestCreatedOn?: string;
   Modified?: string;
   ApproverNames?: string;
+  ApprovalChainJSON?: string;
 }
 
 /* ================= HELPERS ================= */
@@ -188,6 +189,10 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
   const STORAGE_KEY_APPROVED = "myreq_approved_count";
   const STORAGE_KEY_REJECTED = "myreq_rejected_count";
   const STORAGE_KEY_DRAFT = "myreq_draft_count";
+  const STORAGE_KEY_FAILED = "myreq_failed_count";
+
+  // null = not yet checked; true/false = cached result
+  const isAdminFinanceRef = React.useRef<boolean | null>(null);
 
 
   // Tracks if approved/rejected count increased → triggers re-render
@@ -229,10 +234,7 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
   /* ================= FILTERED (API-SIDE) ================= */
 
   const filteredRows = React.useMemo(() => {
-    // ✅ CHANGED: Exclude pending records entirely
-    let data = allRows.filter(
-      (r) => r.status.trim().toLowerCase() !== "pending"
-    );
+    let data = [...allRows];
 
     // Status filter
     if (statusSelected.length > 0) {
@@ -283,8 +285,7 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
       }
     }
 
-    // ✅ CHANGED: Drafts first by default
-    const statusOrder: Record<string, number> = { draft: 0, submitted: 1, "in approval": 2, approved: 3, rejected: 4 };
+    const statusOrder: Record<string, number> = { pending: 0, draft: 1, submitted: 2, "in approval": 3, approved: 4, rejected: 5 };
 
     const getStatusPriority = (s: string): number => statusOrder[s.trim().toLowerCase()] ?? 2;
     data.sort((a, b) => getStatusPriority(a.status) - getStatusPriority(b.status));
@@ -409,10 +410,36 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
       const siteUrl = context.pageContext.web.absoluteUrl;
       const myEmail = String(context.pageContext.user.email || "").trim();
       const esc = (v: string): string => String(v || "").replace(/'/g, "''");
-      const clauses: string[] = [
-        `Requester/EMail eq '${esc(myEmail)}'`,
-        `WorkflowStatus ne 'Failed'`
-      ];
+
+      // One-time check: is this user an Admin or Finance viewer in EForm Users?
+      if (isAdminFinanceRef.current === null) {
+        try {
+          const faCheckUrl =
+            `${siteUrl}/_api/web/lists/getbytitle('EForm%20Users')/items` +
+            `?$top=1&$select=FinanceAdmin&$filter=Email eq '${esc(myEmail)}'`;
+          const faRes = await context.spHttpClient.get(
+            faCheckUrl,
+            SPHttpClient.configurations.v1,
+            { headers: { Accept: "application/json;odata=nometadata", "odata-version": "" } }
+          );
+          if (faRes.ok) {
+            const faJson = await faRes.json() as { value?: Array<{ FinanceAdmin?: string }> };
+            const fa = String(faJson.value?.[0]?.FinanceAdmin || "").trim();
+            isAdminFinanceRef.current = fa === "Admin" || fa === "Finance";
+          } else {
+            isAdminFinanceRef.current = false;
+          }
+        } catch {
+          isAdminFinanceRef.current = false;
+        }
+      }
+      const isAdminFinance = isAdminFinanceRef.current === true;
+
+      // Regular users see only their own requests; Admin/Finance see all (client-side filtered)
+      const clauses: string[] = [`WorkflowStatus ne 'Failed'`];
+      if (!isAdminFinance) {
+        clauses.unshift(`Requester/EMail eq '${esc(myEmail)}'`);
+      }
 
       if (statusSelected.length > 0) {
         const statusTerms: string[] = [];
@@ -464,14 +491,16 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
         clauses.push(`substringof('${q}',Requester/Title)`);
       }
 
+      // Admin/Finance users need ApprovalChainJSON for client-side canViewRequest filtering
+      const extraSelect = isAdminFinance ? ",ApprovalChainJSON" : "";
       const url =
         `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items` +
-        "?$top=5000&$select=Id,Title,RequestNumber,WorkflowStatus,TotalQuantity,TotalAmount,Modified," +
-        "PurposeDetails,RequestCreatedOn,RequestSubmittedOn,FinalDecisionDate,ExpectedDeliveryDate,ApproverNames," +
-        "Requester/Title,Requester/EMail,CurrentApprover/Title,Purpose/Title,CostCenter/Title,Department/Title" +
-        "&$expand=Requester,CurrentApprover,Purpose,CostCenter,Department" +
+        `?$top=5000&$select=Id,Title,RequestNumber,WorkflowStatus,TotalQuantity,TotalAmount,Modified,` +
+        `PurposeDetails,RequestCreatedOn,RequestSubmittedOn,FinalDecisionDate,ExpectedDeliveryDate,ApproverNames,` +
+        `Requester/Title,Requester/EMail,CurrentApprover/Title,Purpose/Title,CostCenter/Title,Department/Title${extraSelect}` +
+        `&$expand=Requester,CurrentApprover,Purpose,CostCenter,Department` +
         `&$filter=${clauses.join(" and ")}` +
-        "&$orderby=Id desc";
+        `&$orderby=Id desc`;
 
       const allItems: InventoryRequestSPItem[] = [];
       let nextUrl: string | undefined = url;
@@ -482,7 +511,27 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
         nextUrl = json["@odata.nextLink"];
       }
 
-      const mappedRows: Row[] = (allItems || []).map((it) => {
+      // Admin/Finance: keep only records where they are the requestor OR have canViewRequest=true
+      const myEmailLower = myEmail.toLowerCase();
+      const visibleItems = isAdminFinance
+        ? allItems.filter((it) => {
+            if (String(it.Requester?.EMail || "").toLowerCase() === myEmailLower) return true;
+            try {
+              const chain = JSON.parse(String(it.ApprovalChainJSON || "{}")) as {
+                allApprovalLevels?: Array<{ approverEmail?: string; canViewRequest?: boolean }>;
+              };
+              return (chain.allApprovalLevels || []).some(
+                (l) =>
+                  String(l.approverEmail || "").toLowerCase() === myEmailLower &&
+                  l.canViewRequest === true
+              );
+            } catch {
+              return false;
+            }
+          })
+        : allItems;
+
+      const mappedRows: Row[] = (visibleItems || []).map((it) => {
         const workflowStatus = String(it.WorkflowStatus || "Submitted");
         const isPending = workflowStatus.trim().toLowerCase() === "pending";
         const isDraft = workflowStatus.trim().toLowerCase() === "draft";
@@ -579,7 +628,8 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
   const getApprovedRejectedCounts = React.useCallback(async (): Promise<{
     approved: number;
     rejected: number;
-    draft: number;          // ✅ ADD THIS
+    draft: number;
+    failed: number;
   }> => {
     const siteUrl = context.pageContext.web.absoluteUrl;
     const myEmail = String(context.pageContext.user.email || "").replace(/'/g, "''");
@@ -607,33 +657,35 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
       return (data?.value?.length ?? 0) as number;
     };
 
-    // ✅ Fetch all 3 concurrently
-    const [approved, rejected, draft] = await Promise.all([
+    const [approved, rejected, draft, failed] = await Promise.all([
       fetchCount("Approved"),
       fetchCount("Rejected"),
-      fetchCount("Draft"),   // ✅ ADD THIS
+      fetchCount("Draft"),
+      fetchCount("Failed"),
     ]);
 
-    return { approved, rejected, draft };
+    return { approved, rejected, draft, failed };
   }, [context]);
 
   /* ── 3. Compare counts, re-render + reload if increased ── */
   const checkAndUpdateCounts = React.useCallback(
     async (isInitialLoad: boolean): Promise<void> => {
       try {
-        const { approved: currentApproved, rejected: currentRejected, draft: currentDraft } =
+        const { approved: currentApproved, rejected: currentRejected, draft: currentDraft, failed: currentFailed } =
           await getApprovedRejectedCounts();
 
         const prevApproved = Number(localStorage.getItem(STORAGE_KEY_APPROVED) ?? 0);
         const prevRejected = Number(localStorage.getItem(STORAGE_KEY_REJECTED) ?? 0);
         const prevDraft = Number(localStorage.getItem(STORAGE_KEY_DRAFT) ?? 0);
+        const prevFailed = Number(localStorage.getItem(STORAGE_KEY_FAILED) ?? 0);
 
         const hasIncreased =
           !isInitialLoad &&
           (
             currentApproved > prevApproved ||
             currentRejected > prevRejected ||
-            currentDraft > prevDraft        // ✅ ADD draft comparison
+            currentDraft > prevDraft ||
+            currentFailed > prevFailed
           );
 
         if (hasIncreased) {
@@ -641,10 +693,10 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
           await loadAll(true);
         }
 
-        // ✅ Always persist all 3 counts
         localStorage.setItem(STORAGE_KEY_APPROVED, String(currentApproved));
         localStorage.setItem(STORAGE_KEY_REJECTED, String(currentRejected));
-        localStorage.setItem(STORAGE_KEY_DRAFT, String(currentDraft));   // ✅ ADD
+        localStorage.setItem(STORAGE_KEY_DRAFT, String(currentDraft));
+        localStorage.setItem(STORAGE_KEY_FAILED, String(currentFailed));
 
       } catch (err) {
         console.error("[MyRequestsPage] checkAndUpdateCounts error:", err);
@@ -769,7 +821,7 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
       header: "Total<br/>Quantity",
       thClassName: "w-[5%] text-left",
       tdClassName: "w-[5%] whitespace-nowrap text-left",
-      render: (r: Row) => r.qty,
+      render: (r: Row) => r.status === "Pending" ? "" : r.qty,
     },
     {
       key: "price",
@@ -777,10 +829,12 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
       thClassName: "w-[7%] text-left",
       tdClassName: "w-[7%] whitespace-nowrap text-left",
       render: (r: Row) =>
-        Number(r.price).toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        }),
+        r.status === "Pending"
+          ? ""
+          : Number(r.price).toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            }),
     },
     {
       key: "export",
@@ -840,11 +894,10 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
     }).catch(() => undefined);
   }, []);
 
-  // ✅ CHANGED: Removed "Pending" from statusOptions
   const statusOptions = React.useMemo(
     () =>
       dedupeLabels(
-        ["Approved", "Rejected", "Submitted", "Draft"],
+        ["Approved", "Rejected", "Submitted", "Draft", "Pending"],
         canonicalizeStatusFilterKey
       ),
     []

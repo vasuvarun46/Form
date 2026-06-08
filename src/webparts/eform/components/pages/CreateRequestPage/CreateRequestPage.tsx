@@ -15,7 +15,9 @@ import {
   spCreateItem,
   spUpdateItem,
   makeTxnId,
-  getNextMonthlyTxnSequence,
+  allocateUniqueTxnId,
+  fetchUserAadProfile,
+  AadUserProfile,
   readExcelToItemsMax300,
   validateExcelItemsWithFlowBulk,
   buildApprovalChainFromLists,
@@ -83,6 +85,7 @@ export default function CreateRequestPage({
   const [inventoryMode, setInventoryMode] = React.useState<InventoryMode | "">("")
   const [inventoryModeError, setInventoryModeError] = React.useState(false);
   const [userData, setUserData] = React.useState<ISuparaItem[]>([]);
+  const [aadProfile, setAadProfile] = React.useState<AadUserProfile | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
   const [submitError, setSubmitError] = React.useState<string>("");
   const [purposes, setPurposes] = React.useState<PurposeOption[]>([]);
@@ -806,6 +809,11 @@ React.useEffect(() => {
 
       setUserData(u);
 
+      // Fetch Azure AD profile for display name and job title (non-blocking)
+      fetchUserAadProfile(context, context.pageContext.user.email)
+        .then((profile) => { if (!isCancelled) setAadProfile(profile); })
+        .catch(() => undefined);
+
       // STEP 2: Extract deptId from the result we already have
       const deptId = u?.[0]?.Department?.Id ?? null;
 
@@ -1517,22 +1525,20 @@ React.useEffect(() => {
       if (draftId && Number(draftId) > 0) {
         const requestId = Number(draftId);
 
-        // ✅ STEP 1: Generate Transaction ID before anything is written as Submitted
-        const runningNo = await getNextMonthlyTxnSequence(context);
-        const formattedId = makeTxnId(runningNo, "submitted", new Date(), requestId);
+        // STEP 1: Allocate a unique Transaction ID (writes Title, WorkflowStatus stays "Draft")
+        const formattedId = await allocateUniqueTxnId(context, requestId);
 
-        // ✅ STEP 2: Build header with real Title + WorkflowStatus = Submitted together
+        // STEP 2: Build header with confirmed Title + WorkflowStatus = Submitted
         const headerBody: Record<string, unknown> = {
           ...approvalFields,
-          Title: formattedId,           // ✅ real ID — never TEMP
+          Title: formattedId,
           RequestNumber: requestId,
           RequestCreatedOn: nowIso,
-          WorkflowStatus: "Submitted",  // ✅ set only after ID is ready
+          WorkflowStatus: "Submitted",
         };
 
-        // ✅ STEP 3: Upsert — PA triggers here and always reads the correct Transaction ID
+        // STEP 3: Upsert — PA triggers here and reads the correct Transaction ID
         await upsertDraftHeaderAndItems(requestId, headerBody, true);
-
 
         await spUpdateItem(context, "InventoryRequests", requestId, {
           Title: formattedId,
@@ -1618,16 +1624,14 @@ React.useEffect(() => {
 
       await Promise.all(createItemPromises);
 
-      // ✅ STEP 3: Generate Transaction ID now that we have the real SP item Id
-      const runningNo = await getNextMonthlyTxnSequence(context);
-      const formattedId = makeTxnId(runningNo, "submitted", new Date(), requestId);
+      // STEP 3: Allocate unique Transaction ID (writes Title, WorkflowStatus stays "Pending")
+      const formattedId = await allocateUniqueTxnId(context, requestId);
 
-      // ✅ STEP 4: Single write — sets real Title + WorkflowStatus = Submitted together
-      //           PA triggers HERE for the first time and reads the correct Transaction ID
+      // STEP 4: Flip WorkflowStatus to Submitted — PA triggers here with correct Title
       await spUpdateItem(context, "InventoryRequests", requestId, {
         Title: formattedId,
         RequestNumber: requestId,
-        WorkflowStatus: "Submitted",   // ✅ PA fires here — Title is already the real ID
+        WorkflowStatus: "Submitted",
       });
 
       onSubmit();
@@ -1808,6 +1812,7 @@ React.useEffect(() => {
       openExcelHelp={() => setExcelHelpOpen(true)}
       closeExcelHelp={() => setExcelHelpOpen(false)}
       userData={userData}
+      aadProfile={aadProfile}
       pageBg={pageBg}
       container={container}
       card={card}

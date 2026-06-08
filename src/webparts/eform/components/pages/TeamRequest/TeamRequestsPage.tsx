@@ -184,10 +184,7 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
     setActionModalOpen(false);
     setPendingRow(null);
     setActionComments("");
-    if (toast.type === "success") {
-      reload().catch(() => undefined);
-    }
-  }, [toast, reload]);
+  }, [toast]);
 
   const [appliedSearchText, setAppliedSearchText] = React.useState<string>("");
 
@@ -302,17 +299,16 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
     try {
       setActionSubmitting(true);
 
-      // ✅ submitDecision now handles stock validation internally and
-      //    sends quantityShort + skuMismatches to Power Automate.
-      //    No edit popup is opened here anymore.
       const res = await submitDecision(pendingRow, pendingAction, actionComments.trim());
 
       if (res.success) {
         setToast({ type: "success", message: res.message || `${pendingAction} success` });
-        closeActionModal(true);
       } else {
         setToast({ type: "error", message: res.message || `${pendingAction} failed` });
       }
+      // Always close modal and reload after PA interaction, regardless of response format
+      closeActionModal(true);
+      reload().catch(() => undefined);
     } catch (e: unknown) {
       setToast({ type: "error", message: toUserMessage(e, "Action failed") });
     } finally {

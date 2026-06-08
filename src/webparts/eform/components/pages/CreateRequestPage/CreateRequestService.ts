@@ -1,7 +1,7 @@
 // pages/CreateRequestPage.logic.ts
 import * as XLSX from "xlsx";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
-import { SPHttpClient, SPHttpClientResponse, HttpClient } from "@microsoft/sp-http";
+import { SPHttpClient, SPHttpClientResponse, HttpClient, AadHttpClient } from "@microsoft/sp-http";
 import { CostCenterOption, FlowItemResponse, IItemRow, ISuparaItem, ItemRowErrors, IUsageState, ODataResponse, PurposeOption, SPFileItem } from "./createRequestTypes";
 
 
@@ -420,6 +420,45 @@ export async function buildApprovalChainFromLists(
     });
   }
 
+  // ── 12b. APPEND Finance / Admin VIEWER entries ──────────────────────────
+  // Fetch all EForm Users with FinanceAdmin = "Admin" or "Finance".
+  // These users are added as canViewRequest-only levels so they can see
+  // every transaction on My Requests without being active approvers.
+  try {
+    const faUrl =
+      `${siteUrl}/_api/web/lists/getbytitle('EForm%20Users')/items` +
+      `?$top=200&$select=Email,FinanceAdmin` +
+      `&$filter=FinanceAdmin eq 'Admin' or FinanceAdmin eq 'Finance'`;
+
+    const faRes = await context.spHttpClient.get(faUrl, SPHttpClient.configurations.v1);
+    if (faRes.ok) {
+      const faJson = await faRes.json() as {
+        value: Array<{ Email?: string; FinanceAdmin?: string }>;
+      };
+      for (const fu of faJson.value || []) {
+        const fuEmail = String(fu.Email || "").trim().toLowerCase();
+        if (!fuEmail) continue;
+        // Skip if already in the chain (e.g. this user is also an LOA approver)
+        if (allApprovalLevels.some((l) => l.approverEmail.toLowerCase() === fuEmail)) continue;
+        const fuRole = String(fu.FinanceAdmin || "").trim(); // "Admin" | "Finance"
+        const fuId = await resolveUserId(fuEmail);
+        allApprovalLevels.push({
+          order: allApprovalLevels.length + 1,
+          approvalRole: fuRole,
+          approverEmail: fuEmail,
+          approverId: fuId,
+          canApproveRequest: false, // viewer only — not part of approval stages
+          canViewRequest: true,
+          isCurrentApprover: false,
+          isEnabledByLOA: false,
+          emailMissing: false,
+        });
+      }
+    }
+  } catch {
+    // Non-blocking: approval chain proceeds without finance/admin viewers on failure
+  }
+
   // ── 13. FINALIZE AND RETURN ──────────────────────────────────────────────
   const firstStage = stages[0];
   const pendingStages = stages.slice(1);
@@ -682,6 +721,54 @@ export const getUserDataFromSharePoint = async (
 
 
 
+/* =========================================================
+   fetchUserAadProfile
+   Fetches display name, job title, and department from
+   Microsoft Graph API (/me for the current user, /users/{email}
+   for any other user). Requires User.Read (current user) and
+   User.ReadBasic.All (other users) Graph API permissions.
+========================================================= */
+export type AadUserProfile = {
+  displayName: string;
+  jobTitle: string;
+  department: string;
+};
+
+export const fetchUserAadProfile = async (
+  context: WebPartContext,
+  email: string
+): Promise<AadUserProfile> => {
+  const empty: AadUserProfile = { displayName: "", jobTitle: "", department: "" };
+  try {
+    const graphClient = await context.aadHttpClientFactory.getClient("https://graph.microsoft.com");
+
+    const isCurrentUser =
+      email.toLowerCase().trim() === context.pageContext.user.email.toLowerCase().trim();
+
+    // Use /me for the logged-in user; /users/{email} for any other user
+    const endpoint = isCurrentUser
+      ? "https://graph.microsoft.com/v1.0/me?$select=displayName,jobTitle,department"
+      : `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email.trim())}?$select=displayName,jobTitle,department`;
+
+    const res = await graphClient.get(endpoint, AadHttpClient.configurations.v1);
+    if (!res.ok) return empty;
+
+    const data = (await res.json()) as {
+      displayName?: string;
+      jobTitle?: string;
+      department?: string;
+    };
+
+    return {
+      displayName: String(data.displayName ?? "").trim(),
+      jobTitle: String(data.jobTitle ?? "").trim(),
+      department: String(data.department ?? "").trim(),
+    };
+  } catch {
+    return empty;
+  }
+};
+
 export const loadMasters = async (
   context: WebPartContext,
   deptId: number | null,
@@ -790,11 +877,21 @@ const to4Digits = (value: number): string => {
   return String(safe).padStart(4, "0").slice(-4);
 };
 
+
 /**
- * Parses the sequence number from a Title like:
- *   II202603/0001  → 1
- *   II202603/0042  → 42
- * Returns 0 if not matched.
+ * Parses the 4-digit monthly sequence from a Title like:
+ *   II202605/0036  → 36   (only if month prefix matches ym)
+ * Returns 0 if not matched or wrong month.
+ */
+const parseGlobalSequenceFromTitle = (title: string, ym: string): number => {
+  const m = /^II(\d{6})\/(\d{4})$/i.exec(String(title || "").trim());
+  if (!m || m[1] !== ym) return 0;
+  return Number(m[2]);
+};
+
+/**
+ * Legacy parser — kept for reading old-format records only.
+ * New submissions use parseGlobalSequenceFromTitle instead.
  */
 const parseMonthlySequenceFromTitle = (
   title: string,
@@ -803,14 +900,21 @@ const parseMonthlySequenceFromTitle = (
   const tx = String(title || "").trim();
   if (!tx) return 0;
 
-  // ✅ New 3-segment format: II202604/1162/0360
+  // 6-digit global format: II202603/030001
+  const match6 = /^II(\d{6})\/(\d{6})$/i.exec(tx);
+  if (match6) {
+    if (match6[1] !== ym) return 0;
+    return Number(match6[2]);
+  }
+
+  // Old 3-segment format: II202604/1162/0360
   const matchNew = /^II(\d{6})\/\d+\/(\d{4})$/i.exec(tx);
   if (matchNew) {
     if (matchNew[1] !== ym) return 0;
     return Number(matchNew[2]);
   }
 
-  // ✅ Legacy 2-segment fallback: II202604/0360
+  // Legacy 2-segment fallback: II202604/0360
   const matchOld = /^II(\d{6})\/(\d{4})$/i.exec(tx);
   if (matchOld) {
     if (matchOld[1] !== ym) return 0;
@@ -832,17 +936,18 @@ const parseMonthlySequenceFromTitle = (
 ========================================================= */
 
 export const getNextSequence = (lastTxnId?: string): number => {
-  const now = new Date();
-  const { ym } = getTxnDateParts(now);
-
   if (!lastTxnId) return 1;
 
+  const { ym } = getTxnDateParts(new Date());
+
+  // Current format: II202605/0036
+  const seq = parseGlobalSequenceFromTitle(lastTxnId, ym);
+  if (seq > 0) return seq + 1;
+
+  // Legacy fallback (old 3-segment or different month)
   const [prefix, seqRaw = ""] = String(lastTxnId).split("/");
   const lastYM = String(prefix || "").replace(/^II/i, "");
-
-  // Different month → reset to 1
   if (lastYM !== ym) return 1;
-
   const seqDigits = String(seqRaw).replace(/\D/g, "");
   const seq4 = seqDigits.slice(-4);
   const parsed = Number(seq4);
@@ -891,32 +996,59 @@ export const getNextMonthlyTxnSequence = async (
 };
 
 /* =========================================================
+   getNextGlobalSequence
+   Queries the last 200 submitted records and returns the
+   next globally-sequential 6-digit running number.
+   This replaces the old monthly-reset sequence.
+========================================================= */
+
+export const getNextGlobalSequence = async (
+  context: WebPartContext,
+  asOf: Date = new Date()
+): Promise<number> => {
+  const siteUrl = context.pageContext.web.absoluteUrl;
+  const { ym } = getTxnDateParts(asOf);
+
+  // Only look at this month's records — sequence resets each month
+  const url =
+    `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items` +
+    `?$top=5000` +
+    `&$select=Title` +
+    `&$filter=startswith(Title,'II${ym}/')` +
+    `&$orderby=Id desc`;
+
+  const json = await spGet<ODataResponse<{ Title?: string }>>(context, url);
+  const rows = getItemsArray<{ Title?: string }>(json);
+
+  let maxSeq = 0;
+  for (const row of rows) {
+    const seq = parseGlobalSequenceFromTitle(String(row.Title || ""), ym);
+    if (seq > maxSeq) maxSeq = seq;
+  }
+
+  return maxSeq + 1;
+};
+
+/* =========================================================
    makeTxnId
-   submitted   → II202603/0001
-   draft       → 0001  (no prefix, temp until submitted)
-   ExcelUpload → 0001  (no prefix, assigned on submit)
+   submitted   → II202603/030001  (6-digit global running number, no SP ID)
+   draft       → 0001             (4-digit, temp until submitted)
+   ExcelUpload → 0001             (4-digit, temp placeholder)
 ========================================================= */
 
 export const makeTxnId = (
   runningNo: number,
   mode: "submitted" | "draft" | "ExcelUpload" = "submitted",
   asOf: Date = new Date(),
-  spItemId?: number   // ✅ NEW — SharePoint item Id
 ): string => {
   const { ym } = getTxnDateParts(asOf);
-  const seq4 = to4Digits(runningNo);
 
   if (mode === "draft" || mode === "ExcelUpload") {
-    return seq4;
+    return to4Digits(runningNo);
   }
 
-  // ✅ Submitted format: II{YYYYMM}/{SP_ID}/{SEQ}
-  if (spItemId && spItemId > 0) {
-    return `II${ym}/${spItemId}/${seq4}`;
-  }
-
-  // Fallback (shouldn't happen for submitted, but safe)
-  return `II${ym}/${seq4}`;
+  // Submitted format: II{YYYYMM}/{4-digit-monthly-sequence}  e.g. II202605/0036
+  return `II${ym}/${to4Digits(runningNo)}`;
 };
 
 /* =========================================================
@@ -933,41 +1065,83 @@ export const getOrCreateTxnId = async (
   currentTitle: string,
   asOf: Date = new Date()
 ): Promise<string> => {
-  const siteUrl = context.pageContext.web.absoluteUrl;
   const { ym } = getTxnDateParts(asOf);
 
   // Already has a valid ID for this month — reuse it
-  const existing = parseMonthlySequenceFromTitle(currentTitle, ym);
+  const existing = parseGlobalSequenceFromTitle(currentTitle, ym);
   if (existing > 0) {
     return currentTitle.trim();
   }
 
-  // No valid ID — generate next sequence and build txnId
-  const runningNo = await getNextMonthlyTxnSequence(context, asOf);
-  const txnId = makeTxnId(runningNo, "submitted", asOf);
+  // Allocate a new unique Transaction ID
+  return allocateUniqueTxnId(context, requestId, asOf);
+};
 
-  // Update the SharePoint item Title
-  const updateRes = await context.spHttpClient.post(
-    `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items(${requestId})`,
-    SPHttpClient.configurations.v1,
-    {
-      headers: {
-        Accept: "application/json;odata=nometadata",
-        "Content-Type": "application/json;odata=nometadata",
-        "odata-version": "",
-        "IF-MATCH": "*",
-        "X-HTTP-Method": "MERGE",
-      },
-      body: JSON.stringify({ Title: txnId }),
+/* =========================================================
+   allocateUniqueTxnId
+   Concurrency-safe Transaction ID allocator.
+   Writes Title=candidate (WorkflowStatus unchanged) then
+   verifies no collision. Lowest SP Id wins on collision;
+   loser resets Title and retries with the next sequence.
+   Caller must do the final WorkflowStatus="Submitted" write.
+========================================================= */
+
+export const allocateUniqueTxnId = async (
+  context: WebPartContext,
+  requestId: number,
+  asOf: Date = new Date(),
+  maxRetries: number = 5
+): Promise<string> => {
+  const siteUrl = context.pageContext.web.absoluteUrl;
+  const { ym } = getTxnDateParts(asOf);
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    // Step 1: Find next candidate sequence for this month
+    const runningNo = await getNextGlobalSequence(context, asOf);
+    const candidate = `II${ym}/${to4Digits(runningNo)}`;
+
+    // Step 2: Write candidate to this record (WorkflowStatus stays unchanged — no PA trigger)
+    await spUpdateItem(context, "InventoryRequests", requestId, { Title: candidate });
+
+    // Step 3: Brief pause to let any concurrent writes settle
+    await new Promise<void>((resolve) => setTimeout(resolve, 300));
+
+    // Step 4: Verify uniqueness — query all records with this exact Title
+    const esc = (v: string): string => v.replace(/'/g, "''");
+    const verifyUrl =
+      `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items` +
+      `?$select=Id` +
+      `&$filter=Title eq '${esc(candidate)}'` +
+      `&$top=10`;
+
+    const verifyJson = await spGet<ODataResponse<{ Id: number }>>(context, verifyUrl);
+    const matches = getItemsArray<{ Id: number }>(verifyJson);
+
+    if (matches.length === 1 && Number(matches[0].Id) === requestId) {
+      // Only our record has this ID — success
+      return candidate;
     }
-  );
 
-  if (!updateRes.ok) {
-    const txt = await updateRes.text();
-    throw new Error(txt || "Failed to update Title with txnId");
+    if (matches.length > 1) {
+      // Collision detected: lowest SP Id wins (first-created record keeps the ID)
+      const minId = Math.min(...matches.map((m) => Number(m.Id)));
+      if (requestId === minId) {
+        // We have the lowest Id — we win
+        return candidate;
+      }
+      // We lost: reset Title so the winner keeps its ID unambiguously
+      await spUpdateItem(context, "InventoryRequests", requestId, { Title: "PENDING" });
+    }
+
+    // Backoff before next retry
+    if (attempt < maxRetries - 1) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+    }
   }
 
-  return txnId;
+  throw new Error(
+    `Unable to allocate a unique Transaction ID after ${maxRetries} attempts. Please try again.`
+  );
 };
 
 /* =========================================================
