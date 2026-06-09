@@ -200,7 +200,7 @@ ${open ? "rounded-b-none border-b-0" : ""}
         {kind === "dateRange" ? (
           <>
             <div className="flex items-start justify-between">
-              <div className="text-[10px] font-medium text-gray-600">
+              <div className={`text-[10px] ${open ? "font-bold text-gray-900" : "font-medium text-gray-600"}`}>
                 {placeholder}
               </div>
 
@@ -221,7 +221,7 @@ ${open ? "rounded-b-none border-b-0" : ""}
           </>
         ) : (
           <div className="flex items-center justify-between">
-            <div className="text-[10px] font-medium text-gray-600">
+            <div className={`text-[10px] ${open ? "font-bold text-gray-900" : "font-medium text-gray-600"}`}>
               {placeholder}
             </div>
 
