@@ -255,7 +255,7 @@ ${open ? "rounded-b-none border-b-0" : ""}
         >
           {kind === "dateRange" ? (
             <div className="p-2">
-              <div className="flex h-8 items-center justify-between rounded-md border border-[#e7e7e7] bg-white px-2">
+              <div className="flex h-8 items-center justify-between rounded-md border border-[#2172DA] bg-white px-2">
                 <span
                   className={[
                     "truncate text-[11px]",
@@ -269,30 +269,36 @@ ${open ? "rounded-b-none border-b-0" : ""}
                   height="14"
                   viewBox="0 0 24 24"
                   fill="none"
-                  stroke="#64748B"
+                  stroke="#2172DA"
                   strokeWidth="1.8"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   aria-hidden="true"
                 >
-                  <rect x="3.5" y="5" width="17" height="15.5" rx="2" />
-                  <line x1="3.5" y1="9" x2="20.5" y2="9" />
-                  <line x1="8" y1="3.5" x2="8" y2="7" />
-                  <line x1="16" y1="3.5" x2="16" y2="7" />
+                  <rect x="3" y="4" width="18" height="17" rx="2" />
+                  <line x1="3" y1="9" x2="21" y2="9" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <circle cx="8" cy="13" r="0.8" fill="#2172DA" />
+                  <circle cx="12" cy="13" r="0.8" fill="#2172DA" />
+                  <circle cx="16" cy="13" r="0.8" fill="#2172DA" />
+                  <circle cx="8" cy="17" r="0.8" fill="#2172DA" />
+                  <circle cx="12" cy="17" r="0.8" fill="#2172DA" />
+                  <circle cx="16" cy="17" r="0.8" fill="#2172DA" />
                 </svg>
               </div>
 
-              <div className="mt-1 rounded-md border border-[#ececec] bg-[#fafafa] p-2">
+              <div className="mt-1 rounded-md border border-[#ececec] bg-[#FFFFFF] p-2">
                 <div className="flex items-center justify-between">
                   <button
                     type="button"
                     onClick={() =>
                       setViewMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))
                     }
-                    className="h-5 w-5 rounded-full text-[12px] text-[#8a8a8a] hover:bg-[#f1f1f1]"
+                    className="h-6 w-6 flex items-center justify-center text-[18px] text-[#6b7280] hover:text-[#2172DA] leading-none select-none"
                     aria-label="Previous month"
                   >
-                    {"<"}
+                    ←
                   </button>
 
                   <div className="text-[11px] font-semibold text-[#4b5563]">
@@ -304,10 +310,10 @@ ${open ? "rounded-b-none border-b-0" : ""}
                     onClick={() =>
                       setViewMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
                     }
-                    className="h-5 w-5 rounded-full text-[12px] text-[#8a8a8a] hover:bg-[#f1f1f1]"
+                    className="h-6 w-6 flex items-center justify-center text-[18px] text-[#6b7280] hover:text-[#2172DA] leading-none select-none"
                     aria-label="Next month"
                   >
-                    {">"}
+                    →
                   </button>
                 </div>
 
@@ -321,25 +327,40 @@ ${open ? "rounded-b-none border-b-0" : ""}
                   {dayCells.map((day) => {
                     const iso = toIsoLocalDate(day);
                     const inCurrentMonth = day.getMonth() === viewMonth.getMonth();
-                    const isSelected = iso === fromSafe || iso === toSafe;
+                    const isStart = iso === fromSafe;
+                    const isEnd = iso === toSafe;
+                    const isSelected = isStart || isEnd;
                     const isInRange =
-                      !!rangeStart && !!rangeEnd && iso >= rangeStart && iso <= rangeEnd;
+                      !!rangeStart && !!rangeEnd && iso > rangeStart && iso < rangeEnd;
+                    const hasBothEnds = !!fromSafe && !!toSafe && fromSafe !== toSafe;
+
+                    const wrapperStyle: React.CSSProperties =
+                      isInRange
+                        ? { backgroundColor: "#E3F0FF" }
+                        : isStart && hasBothEnds
+                          ? { background: "linear-gradient(to right, transparent 50%, #E3F0FF 50%)" }
+                          : isEnd && hasBothEnds
+                            ? { background: "linear-gradient(to left, transparent 50%, #E3F0FF 50%)" }
+                            : {};
 
                     return (
-                      <div key={iso} className="flex justify-center">
+                      <div
+                        key={iso}
+                        className="flex justify-center"
+                        style={wrapperStyle}
+                      >
                         <button
                           type="button"
                           onClick={() => pickDate(day)}
                           className={[
-                            "h-6 w-6 rounded-full text-[10px] transition-colors",
+                            "h-6 w-6 rounded-full text-[10px] transition-colors relative z-10",
                             isSelected
-                              ? "bg-[#2563eb] text-white font-semibold"
+                              ? "bg-[#2172DA] text-white font-semibold"
                               : isInRange
-                                ? "bg-[#dbeafe] text-[#1d4ed8]"
+                                ? "text-[#2172DA]"
                                 : inCurrentMonth
-                                  ? "text-[#4b5563] hover: bg-[#F8F8F8]"
-                                  : "text-[#cbd5e1] hover:bg-[#f8fafc]",
-
+                                  ? "text-[#4b5563] hover:bg-[#F8F8F8]"
+                                  : "text-[#d1d5db] cursor-default",
                           ].join(" ")}
                           aria-label={`Pick ${iso}`}
                         >

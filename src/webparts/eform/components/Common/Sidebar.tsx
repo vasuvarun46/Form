@@ -162,7 +162,7 @@ export default function Sidebar({
               className="w-full text-left"
             >
               <div className="flex items-center justify-between">
-                <div className="text-[11px] font-semibold text-gray-900">Current location</div>
+                <div className="text-[11px] font-bold text-gray-900">Current location</div>
                 <span
                   className={[
                     "shrink-0 h-5 w-5 rounded-full bg-[#FBE9EA] flex items-center justify-center text-[#E60023] transition-all cursor-pointer",
