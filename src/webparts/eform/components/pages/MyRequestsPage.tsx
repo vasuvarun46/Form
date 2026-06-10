@@ -44,6 +44,7 @@ interface Row {
   costCenter: string;
   submitted: string;
   approved: string;
+  approvedDates?: string;
   expected: string;
   qty: number;
   price: number;
@@ -78,6 +79,7 @@ interface InventoryRequestSPItem {
   PurposeDetails?: string;
   RequestSubmittedOn?: string;
   FinalDecisionDate?: string;
+  ApprovedDates?: string;
   ExpectedDeliveryDate?: string;
   TotalQuantity?: number;
   TotalAmount?: number;
@@ -228,7 +230,7 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
-    }).format(d); // Returns "DD/MM/YYYY" in Bangkok time
+    }).format(d).replace(/\//g, "-"); // Returns "DD-MM-YYYY" in Bangkok time
   }
 
   /* ================= FILTERED (API-SIDE) ================= */
@@ -496,7 +498,7 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
       const url =
         `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items` +
         `?$top=5000&$select=Id,Title,RequestNumber,WorkflowStatus,TotalQuantity,TotalAmount,Modified,` +
-        `PurposeDetails,RequestCreatedOn,RequestSubmittedOn,FinalDecisionDate,ExpectedDeliveryDate,ApproverNames,` +
+        `PurposeDetails,RequestCreatedOn,RequestSubmittedOn,FinalDecisionDate,ApprovedDates,ExpectedDeliveryDate,ApproverNames,` +
         `Requester/Title,Requester/EMail,CurrentApprover/Title,Purpose/Title,CostCenter/Title,Department/Title${extraSelect}` +
         `&$expand=Requester,CurrentApprover,Purpose,CostCenter,Department` +
         `&$filter=${clauses.join(" and ")}` +
@@ -564,6 +566,7 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
           costCenter: it.CostCenter?.Title || "",
           submitted: formatDateDdMmYyyySp(it.RequestSubmittedOn),
           approved: formatDateDdMmYyyySp(it.FinalDecisionDate),
+          approvedDates: it.ApprovedDates ? it.ApprovedDates.split(",").map((d: string) => { const p = d.trim().split("-"); return p.length === 3 && p[0].length === 4 ? `${p[2]}-${p[1]}-${p[0]}` : d.trim(); }).filter(Boolean).join(", ") : "",
           expected: formatDateDdMmYyyySp(it.ExpectedDeliveryDate),
           qty: Number(it.TotalQuantity || 0),
           price: Number(it.TotalAmount || 0),
@@ -806,8 +809,8 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
       key: "approved",
       header: "Approved<br/>Date",
       thClassName: "w-[7%]",
-      tdClassName: "w-[7%] whitespace-nowrap",
-      render: (r: Row) => (r.approved === "-" ? "" : r.approved),
+      tdClassName: "w-[7%]",
+      render: (r: Row) => r.approvedDates || (r.approved === "-" ? "" : r.approved),
     },
     {
       key: "expected",
@@ -937,16 +940,22 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
                   >
                     <div className="px-4 py-2 flex justify-between items-center gap-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <span className="inline-flex h-4 w-4 items-center justify-center shrink-0">
+                        <span className="inline-flex h-5 w-5 items-center justify-center shrink-0">
                           {toast.type === "draft" ? (
                             <Icon iconName="Save" className="text-[14px] leading-none" />
                           ) : toast.type === "success" ? (
-                            "✓"
+                            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
+                              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                              <path d="M7 12.5L10.5 16L17 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
                           ) : toast.type === "error" ? (
                             isDiscardToast ? (
                               <Icon iconName="Delete" className="text-[14px] leading-none" />
                             ) : (
-                              "✕"
+                              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
+                                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                                <path d="M9 9L15 15M15 9L9 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                              </svg>
                             )
                           ) : (
                             "↻"
@@ -956,10 +965,12 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
                       </div>
                       <button
                         onClick={() => setToast(null)}
-                        className="text-white text-base leading-none opacity-90 hover:opacity-100"
+                        className="text-white opacity-90 hover:opacity-100 shrink-0"
                         aria-label="Close"
                       >
-                        ×
+                        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path d="M6 6L18 18M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
                       </button>
                     </div>
                   </div>

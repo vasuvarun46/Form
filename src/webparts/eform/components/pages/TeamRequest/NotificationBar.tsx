@@ -24,25 +24,27 @@ export default function NotificationBar(
     >
       <div className="px-4 py-2.5 flex justify-between items-center gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <span className="inline-flex h-4 w-4 items-center justify-center shrink-0 rounded-full border border-white/70">
-            {props.type === "success" ? (
-              <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" aria-hidden="true">
-                <path d="M5 12.5L10 17.5L19 8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" aria-hidden="true">
-                <path d="M7 7L17 17M17 7L7 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            )}
-          </span>
+          {props.type === "success" ? (
+            <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="none" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+              <path d="M7 12.5L10.5 16L17 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="none" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+              <path d="M9 9L15 15M15 9L9 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          )}
           <span className="text-sm font-medium truncate">{props.message}</span>
         </div>
         <button
           onClick={props.onClose}
-          className="text-white text-base leading-none opacity-90 hover:opacity-100"
+          className="text-white opacity-90 hover:opacity-100 shrink-0"
           aria-label="Close"
         >
-          x
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M6 6L18 18M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
         </button>
       </div>
     </div>

@@ -48,7 +48,7 @@ export default function ExportPDFHeader({
 
   const backLabel =
     exportSource === "team"
-      ? "Team requests"
+      ? "Team's requests"
       : exportSource === "all"
         ? "All requests"
         : "My requests";

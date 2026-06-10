@@ -47,6 +47,7 @@ export interface Row {
 
   submitted: string;
   approved: string;
+  approvedDates?: string;
   expected: string;
 
   qty: number;
@@ -432,7 +433,7 @@ export function useTeamRequestsLogic(
   }, [context, siteUrl]);
 
   const loadStatusChoices = React.useCallback(async (): Promise<void> => {
-    setStatusOptions(["In-Approval", "Approved", "Rejected", "Submitted"]);
+    setStatusOptions(["Approved", "Rejected", "Submitted"]);
   }, []);
 
   /* =========================================================
@@ -485,7 +486,7 @@ export function useTeamRequestsLogic(
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
-    }).format(d); // Returns "DD/MM/YYYY" in Bangkok time
+    }).format(d).replace(/\//g, "-"); // Returns "DD-MM-YYYY" in Bangkok time
   }
 
   /* =========================================================
@@ -493,7 +494,7 @@ export function useTeamRequestsLogic(
   ========================================================= */
 
   const loadInventoryRequests = React.useCallback(
-    async (p: EFormUserProfile): Promise<void> => {
+    async (_p: EFormUserProfile): Promise<void> => {
       const clauses: string[] = [
         `WorkflowStatus ne 'Draft' and WorkflowStatus ne 'Pending'`,
       ];
@@ -557,8 +558,8 @@ export function useTeamRequestsLogic(
         `?$select=` +
         `Id,Title,RequestNumber,WorkflowStatus,WorkflowStage,` +
         `ApprovalChainJSON,ApprovalType,HasMultipleApprovals,` +
-        `CurrentApproverEmail,FinalDecisionEmail,ApproverNames,` +  // ✅ ApproverNames added
-        `RequestSubmittedOn,FinalDecisionDate,ExpectedDeliveryDate,` +
+        `CurrentApproverEmail,FinalDecisionEmail,ApproverNames,` +
+        `RequestSubmittedOn,FinalDecisionDate,ApprovedDates,ExpectedDeliveryDate,` +
         `TotalQuantity,TotalAmount,Modified,MultipleApproverData,` +
         `Requester/Title,Requester/EMail,` +
         `CurrentApprover/Id,CurrentApprover/Title,CurrentApprover/EMail,` +
@@ -650,6 +651,7 @@ export function useTeamRequestsLogic(
 
           submitted: formatDateDdMmYyyy(it?.RequestSubmittedOn),
           approved: formatDateDdMmYyyy(it?.FinalDecisionDate),
+          approvedDates: it?.ApprovedDates ? it.ApprovedDates.split(",").map((d: string) => { const p = d.trim().split("-"); return p.length === 3 && p[0].length === 4 ? `${p[2]}-${p[1]}-${p[0]}` : d.trim(); }).filter(Boolean).join(", ") : "",
           expected: formatDateDdMmYyyy(it?.ExpectedDeliveryDate),
 
           qty: Number(it?.TotalQuantity || 0),

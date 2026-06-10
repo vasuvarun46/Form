@@ -401,8 +401,8 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
       key: "approved",
       header: "Approved<br/>Date",
       thClassName: "w-[7%]",
-      tdClassName: "w-[7%] whitespace-nowrap",
-      render: (r: Row) => (r.approved === "-" || !r.approved ? "" : r.approved),
+      tdClassName: "w-[7%]",
+      render: (r: Row) => r.approvedDates || (r.approved === "-" || !r.approved ? "" : r.approved),
     },
     {
       key: "expected",

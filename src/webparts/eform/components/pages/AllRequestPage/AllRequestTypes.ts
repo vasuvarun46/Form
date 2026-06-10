@@ -27,6 +27,7 @@ export interface Row {
   costCenter: string;
   submitted: string;
   approved: string;
+  approvedDates?: string;
   expected: string;
   qty: number;
   price: number;
@@ -36,7 +37,6 @@ export interface Row {
   modifiedIso?: string;
   lastActivityIso?: string;
   ApproverNames?:string
-
 }
 
 /* ==========================================
@@ -75,6 +75,7 @@ export interface InventoryRequestSPItem {
   PurposeDetails?: string;
   RequestSubmittedOn?: string;
   FinalDecisionDate?: string;
+  ApprovedDates?: string;
   ExpectedDeliveryDate?: string;
   TotalQuantity?: number;
   TotalAmount?: number;
