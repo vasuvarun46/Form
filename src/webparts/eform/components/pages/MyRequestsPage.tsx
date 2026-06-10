@@ -566,7 +566,7 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
           costCenter: it.CostCenter?.Title || "",
           submitted: formatDateDdMmYyyySp(it.RequestSubmittedOn),
           approved: formatDateDdMmYyyySp(it.FinalDecisionDate),
-          approvedDates: it.ApprovedDates ? it.ApprovedDates.split(",").map((d: string) => { const p = d.trim().split("-"); return p.length === 3 && p[0].length === 4 ? `${p[2]}-${p[1]}-${p[0]}` : d.trim(); }).filter(Boolean).join(", ") : "",
+          approvedDates: it.ApprovedDates ? it.ApprovedDates.split(",").map((d: string) => { const s = d.trim(); if (!s) return ""; const p = s.split("-"); if (p.length === 3 && p[0].length === 4) return `${p[2]}-${p[1]}-${p[0]}`; return s.replace(/\//g, "-"); }).filter(Boolean).join(", ") : "",
           expected: formatDateDdMmYyyySp(it.ExpectedDeliveryDate),
           qty: Number(it.TotalQuantity || 0),
           price: Number(it.TotalAmount || 0),
