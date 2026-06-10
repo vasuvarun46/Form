@@ -1,6 +1,6 @@
 ﻿import { WebPartContext } from '@microsoft/sp-webpart-base';
 import * as React from 'react';
-import { SPHttpClient, AadHttpClient } from "@microsoft/sp-http";
+import { SPHttpClient } from "@microsoft/sp-http";
 import LogoPng from "../../assets/LOGO.png";
 import { Route } from '../Eform';
 import { ExportActionInfo } from './ExportActionInfo';
@@ -64,6 +64,7 @@ type InventoryRequestItemJson = Record<string, unknown> & {
   CostCenter?: SpLookupTitle;
   Purpose?: SpLookupTitle;
   RequestSubmittedOn?: string;
+  CurrentApproverEmail?: string;
 };
 
 type ExportData = {
@@ -84,6 +85,7 @@ type ExportData = {
   rejectReason: string;
   approvalStatus: string;
   workflowStatus: string;
+  currentApproverEmail?: string;
 };
 
 type LineItem = {
@@ -199,34 +201,49 @@ function cleanPositionText(value?: string): string {
 
 /* =========================================================
    fetchSPUserProfile
-   Fetches job title and department from Microsoft Graph API.
-   Uses /me for the current user and /users/{email} for others.
-   Requires User.Read (current user) and User.ReadBasic.All
-   (other users) Graph API permissions in package-solution.json.
+   Queries the SharePoint People Search index for a user by
+   WorkEmail and returns their JobTitle and Department.
+   No Graph API or Entra ID required.
 ========================================================= */
+type PeopleSearchResponse = {
+  PrimaryQueryResult?: {
+    RelevantResults?: {
+      Table?: {
+        Rows?: Array<{ Cells?: Array<{ Key: string; Value: string }> }>;
+      };
+    };
+  };
+};
+
 async function fetchSPUserProfile(
   context: WebPartContext,
   email: string
 ): Promise<{ jobTitle: string; department: string }> {
   const empty = { jobTitle: "", department: "" };
   try {
-    const graphClient = await context.aadHttpClientFactory.getClient("https://graph.microsoft.com");
+    const siteUrl = context.pageContext.web.absoluteUrl;
+    const safeEmail = encodeURIComponent(email.toLowerCase().trim());
 
-    const isCurrentUser =
-      email.toLowerCase().trim() === context.pageContext.user.email.toLowerCase().trim();
+    const url =
+      `${siteUrl}/_api/search/query` +
+      `?querytext='WorkEmail:${safeEmail}'` +
+      `&sourceid='B09A7990-05EA-4AF9-81EF-EDFAB16C4E31'` +
+      `&selectproperties='JobTitle,Department'` +
+      `&rowlimit=1`;
 
-    const endpoint = isCurrentUser
-      ? "https://graph.microsoft.com/v1.0/me?$select=displayName,jobTitle,department"
-      : `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email.trim())}?$select=displayName,jobTitle,department`;
-
-    const res = await graphClient.get(endpoint, AadHttpClient.configurations.v1);
+    const res = await context.spHttpClient.get(url, SPHttpClient.configurations.v1, {
+      headers: { Accept: "application/json;odata=nometadata", "odata-version": "" },
+    });
     if (!res.ok) return empty;
 
-    const data = (await res.json()) as { jobTitle?: string; department?: string };
+    const data = (await res.json()) as PeopleSearchResponse;
+    const cells = data?.PrimaryQueryResult?.RelevantResults?.Table?.Rows?.[0]?.Cells ?? [];
+    const get = (key: string): string =>
+      String(cells.find((c) => c.Key === key)?.Value ?? "").trim();
 
     return {
-      jobTitle: cleanDisplayText(data.jobTitle ?? ""),
-      department: cleanDisplayText(data.department ?? ""),
+      jobTitle: cleanDisplayText(get("JobTitle")),
+      department: cleanDisplayText(get("Department")),
     };
   } catch {
     return empty;
@@ -528,7 +545,7 @@ export default function ExportPDFPage({
 
         const url =
           `${webUrl}/_api/web/lists/getbytitle('${listTitle}')/items(${spId})` +
-          `?$select=Id,RequestSubmittedOn,${Title},${ApproverNames},` +
+          `?$select=Id,RequestSubmittedOn,${Title},${ApproverNames},CurrentApproverEmail,` +
           `${requesterInternal}/Title,${requesterInternal}/EMail,${jobInternal},${deptInternal}/Title,` +
           `${expectedInternal},${placeInternal},${purposeDetailsInternal},` +
           `${multipleApproverDataInternal},${costInternal}/Title,` +
@@ -602,6 +619,7 @@ export default function ExportPDFPage({
           rejectReason,
           approvalStatus,
           workflowStatus,
+          currentApproverEmail: safeText(d.CurrentApproverEmail || "").toLowerCase(),
         });
 
         // Fetch requestor's job title and department from Azure AD (via SP User Profile service)
@@ -667,14 +685,15 @@ export default function ExportPDFPage({
           position: cleanDisplayText(actedStage.approverJobPosition || actedStage.approvalRole || ""),
           status: normalizeApprovalStatus(actedStage.action || actedStage.Status),
           date: formatDateDdMmYyyy(actedStage.date || actedStage.Date),
-          reason: cleanDisplayText(actedStage.reason),  // ✅ now populated correctly
+          reason: cleanDisplayText(actedStage.reason),
           bypassBy: "",
-          approverEmail: actedStage.approverEmail,  // ✅
+          // Use stage email if present; fall back to CurrentApproverEmail from SP
+          approverEmail: actedStage.approverEmail || exportData?.currentApproverEmail || "",
           approvalRole: cleanDisplayText(actedStage.approvalRole),
         }];
       }
 
-      // No one acted yet — fallback to exportData
+      // No one acted yet — use CurrentApproverEmail so Search API can fetch their position
       return [{
         slot: 1,
         name: cleanDisplayText(exportData?.approverNames || exportData?.approverName),
@@ -689,7 +708,7 @@ export default function ExportPDFPage({
         date: formatDateDdMmYyyy(cleanDisplayText(exportData?.approvedDate)),
         reason: cleanDisplayText(exportData?.rejectReason),
         bypassBy: "",
-        approverEmail: "",  // ✅
+        approverEmail: exportData?.currentApproverEmail || "",
       }];
     }
 
@@ -750,6 +769,7 @@ export default function ExportPDFPage({
     exportData?.approvalStatus,
     exportData?.approvedDate,
     exportData?.rejectReason,
+    exportData?.currentApproverEmail,
   ]);
 
 
@@ -1386,15 +1406,14 @@ export default function ExportPDFPage({
 
                     <p className="mb-1">
                       <span className="text-gray-400">Approval :</span>{" "}
-                      <span className={`${getSubmitDisplay(approver.status).className} font-medium`}>
+                      <span className={`${getSubmitDisplay(approver.status).className} font-bold`}>
                         {getSubmitDisplay(approver.status).label}
                       </span>
                     </p>
 
                     {approver.status === "Rejected" && (
                       <p className="mb-1">
-                        <span className="text-gray-400">เหตุผลการปฏิเสธ :</span>{" "}
-                        {/* ✅ approver.reason is now populated from stage.reason */}
+                        <span className="text-gray-400">Reject Reason :</span>{" "}
                         <span>{cleanDisplayText(approver.reason) || "-"}</span>
                       </p>
                     )}

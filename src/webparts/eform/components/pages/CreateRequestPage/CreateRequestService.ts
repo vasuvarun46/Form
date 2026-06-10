@@ -1,7 +1,7 @@
 // pages/CreateRequestPage.logic.ts
 import * as XLSX from "xlsx";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
-import { SPHttpClient, SPHttpClientResponse, HttpClient, AadHttpClient } from "@microsoft/sp-http";
+import { SPHttpClient, SPHttpClientResponse, HttpClient } from "@microsoft/sp-http";
 import { CostCenterOption, FlowItemResponse, IItemRow, ISuparaItem, ItemRowErrors, IUsageState, ODataResponse, PurposeOption, SPFileItem } from "./createRequestTypes";
 
 
@@ -723,15 +723,25 @@ export const getUserDataFromSharePoint = async (
 
 /* =========================================================
    fetchUserAadProfile
-   Fetches display name, job title, and department from
-   Microsoft Graph API (/me for the current user, /users/{email}
-   for any other user). Requires User.Read (current user) and
-   User.ReadBasic.All (other users) Graph API permissions.
+   Queries the SharePoint People Search index for a user by
+   WorkEmail and returns their PreferredName, JobTitle, and
+   Department. No Graph API or Entra ID required — uses only
+   the standard SPFx spHttpClient against the Search REST API.
 ========================================================= */
 export type AadUserProfile = {
   displayName: string;
   jobTitle: string;
   department: string;
+};
+
+type SearchResponse = {
+  PrimaryQueryResult?: {
+    RelevantResults?: {
+      Table?: {
+        Rows?: Array<{ Cells?: Array<{ Key: string; Value: string }> }>;
+      };
+    };
+  };
 };
 
 export const fetchUserAadProfile = async (
@@ -740,29 +750,31 @@ export const fetchUserAadProfile = async (
 ): Promise<AadUserProfile> => {
   const empty: AadUserProfile = { displayName: "", jobTitle: "", department: "" };
   try {
-    const graphClient = await context.aadHttpClientFactory.getClient("https://graph.microsoft.com");
+    const siteUrl = context.pageContext.web.absoluteUrl;
+    const safeEmail = encodeURIComponent(email.toLowerCase().trim());
 
-    const isCurrentUser =
-      email.toLowerCase().trim() === context.pageContext.user.email.toLowerCase().trim();
+    // People Search source ID (SharePoint built-in constant)
+    const url =
+      `${siteUrl}/_api/search/query` +
+      `?querytext='WorkEmail:${safeEmail}'` +
+      `&sourceid='B09A7990-05EA-4AF9-81EF-EDFAB16C4E31'` +
+      `&selectproperties='PreferredName,JobTitle,Department'` +
+      `&rowlimit=1`;
 
-    // Use /me for the logged-in user; /users/{email} for any other user
-    const endpoint = isCurrentUser
-      ? "https://graph.microsoft.com/v1.0/me?$select=displayName,jobTitle,department"
-      : `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email.trim())}?$select=displayName,jobTitle,department`;
-
-    const res = await graphClient.get(endpoint, AadHttpClient.configurations.v1);
+    const res = await context.spHttpClient.get(url, SPHttpClient.configurations.v1, {
+      headers: { Accept: "application/json;odata=nometadata", "odata-version": "" },
+    });
     if (!res.ok) return empty;
 
-    const data = (await res.json()) as {
-      displayName?: string;
-      jobTitle?: string;
-      department?: string;
-    };
+    const data = (await res.json()) as SearchResponse;
+    const cells = data?.PrimaryQueryResult?.RelevantResults?.Table?.Rows?.[0]?.Cells ?? [];
+    const get = (key: string): string =>
+      String(cells.find((c) => c.Key === key)?.Value ?? "").trim();
 
     return {
-      displayName: String(data.displayName ?? "").trim(),
-      jobTitle: String(data.jobTitle ?? "").trim(),
-      department: String(data.department ?? "").trim(),
+      displayName: get("PreferredName") || get("DisplayName") || "",
+      jobTitle: get("JobTitle") || "",
+      department: get("Department") || "",
     };
   } catch {
     return empty;

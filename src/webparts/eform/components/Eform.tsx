@@ -74,16 +74,13 @@ const _hashRoute = (() => {
 const _initialHashRoute = _dlParams ? undefined : _hashRoute;
 
 const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => {
-  // Only go straight to exportPdf when RequestId alone (no TransactionId to validate)
-  const _needsValidation = !!(_dlParams?.transactionId);
+  // Always start at "home" when a deep-link is present.
+  // The validation effect below checks access and navigates to exportPdf (or shows denied).
   const [route, setRoute] = React.useState<Route>(
-    _dlParams
-      ? (_needsValidation ? "home" : "exportPdf")
-      : (_initialHashRoute || "home")
+    _dlParams ? "home" : (_initialHashRoute || "home")
   );
-  const [selectedSpId, setSelectedSpId] = React.useState<number | undefined>(
-    _dlParams && !_needsValidation ? _dlParams.requestId : undefined
-  );
+  const [selectedSpId, setSelectedSpId] = React.useState<number | undefined>(undefined);
+  const [dlAccessDenied, setDlAccessDenied] = React.useState(false);
   const [exportSource, setExportSource] = React.useState<ExportSource>("my");
   const [quickPdfRequest, setQuickPdfRequest] = React.useState<{ spId: number; source: ExportSource } | undefined>(undefined);
   const [exportActionInfo, setExportActionInfo] = React.useState<ExportActionInfo | undefined>(undefined);
@@ -133,19 +130,22 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
   const approvalApiKeyRef = React.useRef<string>("");
   const effectiveFlowUrl = runtimeFlowUrl || flowUrl;
 
-  // ── Deep-link: validate RequestId + TransactionId match the same record ──
+  // ── Deep-link: validate record + enforce access control ──────────────────
+  // Only the requestor, assigned approvers (canViewRequest=true in ApprovalChainJSON),
+  // and Admin/Finance users (added to allApprovalLevels by buildApprovalChainFromLists)
+  // are allowed to view the record. Everyone else sees an Access Denied screen.
   React.useEffect(() => {
     if (!_dlParams) return;
     const { requestId, transactionId } = _dlParams;
 
-    // No TransactionId — RequestId alone is trusted, spId already set via initial state
-    if (!transactionId) return;
-
-    // Both present — verify they point to the same record
     const webUrl = context.pageContext.web.absoluteUrl;
+    const myEmail = String(context.pageContext.user.email || "").toLowerCase().trim();
+
+    // Fetch the record including ApprovalChainJSON and requester email for the access check
     const url =
       `${webUrl}/_api/web/lists/getbytitle('InventoryRequests')/items(${requestId})` +
-      `?$select=Id,Title`;
+      `?$select=Id,Title,ApprovalChainJSON,Requester/EMail` +
+      `&$expand=Requester`;
 
     context.spHttpClient
       .get(url, SPHttpClient.configurations.v1)
@@ -153,18 +153,50 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
         if (!res.ok) throw new Error("Item not found");
         return res.json();
       })
-      .then((item: { Id: number; Title: string }) => {
-        if (item.Title === transactionId) {
-          // RequestId and TransactionId match — navigate to export PDF
-          setSelectedSpId(item.Id);
-          setRoute("exportPdf");
-        } else {
-          // Mismatch — URL is invalid, stay on home
-
+      .then((item: {
+        Id: number;
+        Title: string;
+        ApprovalChainJSON?: string;
+        Requester?: { EMail?: string };
+      }) => {
+        // Validate TransactionId matches the record's Title (when provided)
+        if (transactionId && item.Title !== transactionId) {
+          setRoute("home");
+          try { history.replaceState(null, "", "#"); } catch { /* ignore */ }
+          return;
         }
+
+        // ── Access control ────────────────────────────────────────────────────
+        // Rule 1: the requestor always has access
+        const isRequester =
+          String(item.Requester?.EMail || "").toLowerCase().trim() === myEmail;
+
+        // Rule 2: any user listed in allApprovalLevels with canViewRequest=true
+        // (covers: LOA approvers, Admin users, Finance users added in step 12b)
+        let hasChainAccess = false;
+        try {
+          const chain = JSON.parse(String(item.ApprovalChainJSON || "{}")) as {
+            allApprovalLevels?: Array<{ approverEmail?: string; canViewRequest?: boolean }>;
+          };
+          hasChainAccess = (chain.allApprovalLevels || []).some(
+            (l) =>
+              String(l.approverEmail || "").toLowerCase().trim() === myEmail &&
+              l.canViewRequest === true
+          );
+        } catch { /* malformed JSON — deny */ }
+
+        if (!isRequester && !hasChainAccess) {
+          // User has no access to this record
+          setDlAccessDenied(true);
+          return;
+        }
+
+        // Authorized — open the transaction detail via My Requests context
+        setSelectedSpId(item.Id);
+        setExportSource("my");
+        setRoute("exportPdf");
       })
       .catch(() => {
-        // RequestId not found or API error — go home
         setRoute("home");
         try { history.replaceState(null, "", "#"); } catch { /* ignore */ }
       });
@@ -384,6 +416,21 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
   const isFirefox = typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("firefox");
 
   const renderPage = (): JSX.Element => {
+    // Deep-link access denied — user is not the requestor, an approver, or Admin/Finance
+    if (dlAccessDenied) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[400px] p-10 text-center gap-4">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-14 w-14 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          <h2 className="text-lg font-semibold text-gray-700">Access Denied</h2>
+          <p className="text-sm text-gray-500 max-w-xs leading-relaxed">
+            You do not have permission to view this request. Only the requestor, assigned approvers, and Admin / Finance users can access this record.
+          </p>
+        </div>
+      );
+    }
+
     if (!permissionsReady) {
       return (
         <div className="p-6 text-[12px] text-gray-600">

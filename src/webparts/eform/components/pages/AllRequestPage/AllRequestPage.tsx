@@ -136,21 +136,16 @@ export default function AllRequestPage(
     const choices: string[] = Array.isArray(json?.Choices)
       ? json.Choices.map((choice: unknown) => String(choice || ""))
       : [];
-    const draftKey = canonicalizeStatusFilterKey("Draft");
-    const failedKey = canonicalizeStatusFilterKey("Failed"); // ✅ ADD THIS
-    const cleaned = dedupeLabels(choices, canonicalizeStatusFilterKey).filter(
-      (status) =>
-        canonicalizeStatusFilterKey(status) !== draftKey &&
-        canonicalizeStatusFilterKey(status) !== failedKey // ✅ ADD THIS
-    );
+    const draftKey      = canonicalizeStatusFilterKey("Draft");
+    const failedKey     = canonicalizeStatusFilterKey("Failed");
+    const inApprovalKey = canonicalizeStatusFilterKey("In Approval");
+    const exclude = (status: string): boolean => {
+      const key = canonicalizeStatusFilterKey(status);
+      return key !== draftKey && key !== failedKey && key !== inApprovalKey;
+    };
+    const cleaned = dedupeLabels(choices, canonicalizeStatusFilterKey).filter(exclude);
     setStatusOptions(cleaned);
-    setStatusFilter((prev) =>
-      prev.filter(
-        (status) =>
-          canonicalizeStatusFilterKey(status) !== draftKey &&
-          canonicalizeStatusFilterKey(status) !== failedKey // ✅ ADD THIS
-      )
-    );
+    setStatusFilter((prev) => prev.filter(exclude));
   };
 
   const loadPurposeOptions = async (): Promise<void> => {
@@ -396,7 +391,7 @@ export default function AllRequestPage(
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
-    }).format(d); // Returns "DD/MM/YYYY" in Bangkok time
+    }).format(d).replace(/\//g, "-"); // Returns "DD-MM-YYYY" in Bangkok time
   }
 
   const onExportExcel = async (mode: "all" | "selected") => {
@@ -509,6 +504,7 @@ export default function AllRequestPage(
           "PurposeDetails",
           "RequestSubmittedOn",
           "FinalDecisionDate",
+          "ApprovedDates",
           "ExpectedDeliveryDate",
           "Modified",
           "Requester/Title",
@@ -582,6 +578,7 @@ export default function AllRequestPage(
           costCenter: it.CostCenter?.Title ?? "-",
           submitted: formatDateDdMmYyyy(it.RequestSubmittedOn),
           approved: formatDateDdMmYyyy(it.FinalDecisionDate),
+          approvedDates: it.ApprovedDates ? it.ApprovedDates.split(",").map((d: string) => { const p = d.trim().split("-"); return p.length === 3 && p[0].length === 4 ? `${p[2]}-${p[1]}-${p[0]}` : d.trim(); }).filter(Boolean).join(", ") : "",
           expected: formatDateDdMmYyyy(it.ExpectedDeliveryDate),
           qty: Number(it.TotalQuantity ?? 0),
           price: Number(it.TotalAmount ?? 0),
@@ -825,8 +822,8 @@ export default function AllRequestPage(
       key: "approved",
       header: "Approved<br/>Date",
       thClassName: "w-[8%]",
-      tdClassName: "w-[8%] whitespace-nowrap",
-      render: (r: Row) => (r.approved === "-" || !r.approved ? "" : r.approved),
+      tdClassName: "w-[8%]",
+      render: (r: Row) => r.approvedDates || (r.approved === "-" || !r.approved ? "" : r.approved),
     },
     {
       key: "expected",
