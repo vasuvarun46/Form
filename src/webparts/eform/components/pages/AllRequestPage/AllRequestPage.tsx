@@ -867,6 +867,13 @@ export default function AllRequestPage(
         </div>
       ),
     },
+    {
+      key: "approval",
+      header: "Approval",
+      thClassName: "w-[6%] text-left",
+      tdClassName: "w-[6%] text-left",
+      render: () => <span className="text-gray-400">-</span>,
+    },
   ];
 
 
