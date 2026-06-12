@@ -88,6 +88,7 @@ export interface AllApprovalLevel {
 export interface GetActionInfoResult {
   canAct: boolean;
   showReject: boolean;
+  isApproverWaiting?: boolean;  // in chain but not yet their turn
 }
 
 // ✅ EForm Users profile
@@ -847,18 +848,24 @@ export function useTeamRequestsLogic(
             l.approverEmail === loginEmail &&
             l.canApproveRequest === true
         );
-        return canApprove
-          ? { canAct: true, showReject: true }
-          : { canAct: false, showReject: false };
+        if (canApprove) return { canAct: true, showReject: true };
+
+        const isInChainWaiting = row.allApprovalLevels.some(
+          (l) => l.approverEmail === loginEmail && l.canApproveRequest === false
+        );
+        return { canAct: false, showReject: false, isApproverWaiting: isInChainWaiting };
       }
 
       if (isMultipleApprover) {
         const isCurrentApprover =
           !!row.currentApproverEmail &&
           row.currentApproverEmail === loginEmail;
-        return isCurrentApprover
-          ? { canAct: true, showReject: true }
-          : { canAct: false, showReject: false };
+        if (isCurrentApprover) return { canAct: true, showReject: true };
+
+        const isInChainWaiting = row.allApprovalLevels.some(
+          (l) => l.approverEmail === loginEmail
+        );
+        return { canAct: false, showReject: false, isApproverWaiting: isInChainWaiting };
       }
 
       return { canAct: false, showReject: false };

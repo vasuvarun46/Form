@@ -491,6 +491,7 @@ export default function ExportPDFPage({
   const showReject = exportActionInfo?.showReject ?? false;
   const isBypassMode = exportActionInfo?.mode === "bypass";
   const isApproveMode = exportActionInfo?.mode === "approve" || (canAct && !isBypassMode);
+  const isApproverWaiting = exportActionInfo?.isApproverWaiting ?? false;
   const canExportPdf =
     exportSource === "my" ? permissions?.exportOwnReport
       : exportSource === "team" ? permissions?.exportTeamReport
@@ -1462,6 +1463,7 @@ export default function ExportPDFPage({
           isApproveMode={isApproveMode}
           isBypassMode={isBypassMode}
           showReject={showReject}
+          isApproverWaiting={isApproverWaiting}
           canExportPdf={!!canExportPdf}
           pdfBusy={pdfBusy}
           permissions={permissions}

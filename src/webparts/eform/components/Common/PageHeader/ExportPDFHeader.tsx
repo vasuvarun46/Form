@@ -13,6 +13,7 @@ interface Props {
   isApproveMode?: boolean;
   isBypassMode?: boolean;
   showReject?: boolean;
+  isApproverWaiting?: boolean;
   canExportPdf?: boolean;
   pdfBusy?: boolean;
   actionBusy?: boolean;
@@ -32,6 +33,7 @@ export default function ExportPDFHeader({
   isApproveMode = false,
   isBypassMode = false,
   showReject = false,
+  isApproverWaiting = false,
   canExportPdf = false,
   pdfBusy = false,
   actionBusy = false,
@@ -44,7 +46,9 @@ export default function ExportPDFHeader({
 }: Props): JSX.Element {
   const isDesktop = useIsDesktop(700);
   const actionButtonSharedClass =
-    "font-semibold transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
+    "font-semibold transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed";
+  const disabledGreyClass =
+    "disabled:bg-[#f3f4f6] disabled:border-[#d1d5db] disabled:text-[#9ca3af] disabled:hover:bg-[#f3f4f6] disabled:hover:text-[#9ca3af]";
 
   const backLabel =
     exportSource === "team"
@@ -96,15 +100,16 @@ export default function ExportPDFHeader({
               </button>
             )}
 
-            {canAct && canUseActionButtons && (
+            {(canAct || isApproverWaiting) && canUseActionButtons && (
               <>
-                {(isApproveMode || canAct) && (
+                {(isApproveMode || canAct || isApproverWaiting) && (
                   <button
                     onClick={onApprove}
-                    disabled={actionBusy}
+                    disabled={actionBusy || isApproverWaiting}
+                    title={isApproverWaiting ? "Waiting for the previous approver to approve first." : undefined}
                     className={isDesktop
-                      ? `h-11 min-w-[130px] px-4 rounded-md border border-[#12a020] bg-[#e6f2e8] text-[#12a020] text-[14px] hover:bg-[#12a020] hover:text-white active:bg-[#0f8a1b] active:text-white focus-visible:outline-[#12a020] ${actionButtonSharedClass}`
-                      : `h-8 min-w-[92px] px-3 rounded-md border border-[#12a020] bg-[#e6f2e8] text-[#12a020] text-[12px] hover:bg-[#12a020] hover:text-white active:bg-[#0f8a1b] active:text-white focus-visible:outline-[#12a020] ${actionButtonSharedClass}`}
+                      ? `h-11 min-w-[130px] px-4 rounded-md border border-[#12a020] bg-[#e6f2e8] text-[#12a020] text-[14px] hover:bg-[#12a020] hover:text-white active:bg-[#0f8a1b] active:text-white focus-visible:outline-[#12a020] ${actionButtonSharedClass} ${disabledGreyClass}`
+                      : `h-8 min-w-[92px] px-3 rounded-md border border-[#12a020] bg-[#e6f2e8] text-[#12a020] text-[12px] hover:bg-[#12a020] hover:text-white active:bg-[#0f8a1b] active:text-white focus-visible:outline-[#12a020] ${actionButtonSharedClass} ${disabledGreyClass}`}
                   >
                     Approve
                   </button>
@@ -113,7 +118,8 @@ export default function ExportPDFHeader({
                 {isBypassMode && (
                   <button
                     onClick={onBypass}
-                    disabled={actionBusy}
+                    disabled={actionBusy || isApproverWaiting}
+                    title={isApproverWaiting ? "Waiting for the previous approver to approve first." : undefined}
                     className={isDesktop
                       ? `h-11 min-w-[130px] px-4 rounded-md border border-[#2563eb] bg-[#eff6ff] text-[#2563eb] text-[14px] hover:bg-[#2563eb] hover:text-white active:bg-[#1d4ed8] active:text-white focus-visible:outline-[#2563eb] ${actionButtonSharedClass}`
                       : `h-8 min-w-[92px] px-3 rounded-md border border-[#2563eb] bg-[#eff6ff] text-[#2563eb] text-[12px] hover:bg-[#2563eb] hover:text-white active:bg-[#1d4ed8] active:text-white focus-visible:outline-[#2563eb] ${actionButtonSharedClass}`}
@@ -122,13 +128,14 @@ export default function ExportPDFHeader({
                   </button>
                 )}
 
-                {showReject && (
+                {(showReject || isApproverWaiting) && (
                   <button
                     onClick={onReject}
-                    disabled={actionBusy}
+                    disabled={actionBusy || isApproverWaiting}
+                    title={isApproverWaiting ? "Waiting for the previous approver to approve first." : undefined}
                     className={isDesktop
-                      ? `h-11 min-w-[130px] px-4 rounded-md border border-[#ef4444] bg-[#fff1f2] text-[#dc2626] text-[14px] hover:bg-[#dc2626] hover:text-white active:bg-[#b91c1c] active:text-white focus-visible:outline-[#ef4444] ${actionButtonSharedClass}`
-                      : `h-8 min-w-[92px] px-3 rounded-md border border-[#ef4444] bg-[#fff1f2] text-[#dc2626] text-[12px] hover:bg-[#dc2626] hover:text-white active:bg-[#b91c1c] active:text-white focus-visible:outline-[#ef4444] ${actionButtonSharedClass}`}
+                      ? `h-11 min-w-[130px] px-4 rounded-md border border-[#ef4444] bg-[#fff1f2] text-[#dc2626] text-[14px] hover:bg-[#dc2626] hover:text-white active:bg-[#b91c1c] active:text-white focus-visible:outline-[#ef4444] ${actionButtonSharedClass} ${disabledGreyClass}`
+                      : `h-8 min-w-[92px] px-3 rounded-md border border-[#ef4444] bg-[#fff1f2] text-[#dc2626] text-[12px] hover:bg-[#dc2626] hover:text-white active:bg-[#b91c1c] active:text-white focus-visible:outline-[#ef4444] ${actionButtonSharedClass} ${disabledGreyClass}`}
                   >
                     Reject
                   </button>

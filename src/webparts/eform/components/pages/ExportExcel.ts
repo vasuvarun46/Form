@@ -13,33 +13,33 @@ export interface ExportRequestRow {
   department?: string;
   submitted?: string;
   approved?: string;
+  approvedDates?: string;
   expected?: string;
-  // Line-item fields (new)
   items?: ExportLineItem[];
-  // Legacy summary fields (backward compat)
   qty?: number;
   price?: number;
 }
 
-// type ExportRequestRowWithDepartmentFallback = ExportRequestRow & {
-//   departmentTitle?: string;
-//   Department?: { Title?: string };
-// };
-
 export interface ExportLineItem {
   sku: string;
   productCode?: string;
-  productDescription?: string;
+  color?: string;
+  size?: string;
   qty: number;
   unitPrice: number;
+  lineTotal?: number;
 }
 
 type InventoryRequestItemForExport = {
   RequestIDId?: number;
   SKUCode?: string;
   ProductDescription?: string;
+  Color?: string;
+  Size?: string;
   Quantity?: number;
   UnitPrice?: number;
+  LineTotal?: number;
+  LineNumber?: number;
   RowStatus?: string;
 };
 
@@ -67,7 +67,7 @@ export async function fetchExportItemsByRequestIds(
     let nextUrl: string | undefined =
       `${siteUrl}/_api/web/lists/getbytitle('InventoryRequestItems')/items` +
       `?$top=5000` +
-      `&$select=RequestIDId,SKUCode,ProductDescription,Quantity,UnitPrice,LineNumber,Id,RowStatus` +
+      `&$select=RequestIDId,SKUCode,ProductDescription,Color,Size,Quantity,UnitPrice,LineTotal,LineNumber,Id,RowStatus` +
       `&$filter=(${requestFilter})` +
       `&$orderby=RequestIDId asc,LineNumber asc,Id asc`;
 
@@ -101,12 +101,19 @@ export async function fetchExportItemsByRequestIds(
         const rowStatus = String(item?.RowStatus || "").trim().toLowerCase();
         if (rowStatus === "inactive") continue;
 
+        const qty = Number(item?.Quantity || 0);
+        const unitPrice = Number(item?.UnitPrice || 0);
+        const lineTotal = Number(item?.LineTotal || 0) || unitPrice * qty;
+
         if (!out[requestId]) out[requestId] = [];
         out[requestId].push({
-          sku: String(item?.SKUCode || "-"),
-          productDescription: String(item?.ProductDescription || "-"),
-          qty: Number(item?.Quantity || 0),
-          unitPrice: Number(item?.UnitPrice || 0),
+          sku: String(item?.SKUCode || ""),
+          productCode: String(item?.ProductDescription || ""),
+          color: String(item?.Color || ""),
+          size: String(item?.Size || ""),
+          qty,
+          unitPrice,
+          lineTotal,
         });
       }
 
@@ -121,38 +128,77 @@ export async function fetchExportItemsByRequestIds(
 }
 
 /**
- * Export requests to Excel with 15 columns per FR FS-II-040.
- * If items[] is provided, expands to one row per SKU.
- * Otherwise falls back to summary row.
+ * Exports requests to Excel. Expands one row per SKU line item.
+ * Transaction columns are repeated on every item row for the same request.
+ * Uses aoa_to_sheet so both header groups can share the "Total Tag Price" label.
  */
 export async function exportToExcel(rows: ExportRequestRow[]): Promise<void> {
   if (!rows || rows.length === 0) return;
 
   const XLSX = await import(/* webpackChunkName: "xlsx" */ "xlsx");
 
-  const formatted: Record<string, string | number>[] = [];
+  const headers: string[] = [
+    "Transaction ID",
+    "Status",
+    "Requestor Name",
+    "Approver Name",
+    "Purpose",
+    "Purpose Detail",
+    "Cost Center",
+    "Submitted Date",
+    "Approved Date",
+    "Expected Delivery Date",
+    "Total Quantity",
+    "Total Tag Price",
+    "SKU Code",
+    "Product Code",
+    "Color",
+    "Size",
+    "Tag Price Per Unit",
+    "Quantity",
+    "Total Tag Price",
+  ];
+
+  const data: (string | number)[][] = [headers];
 
   for (const r of rows) {
-    // ✅ One row per request — no line-item expansion
-    formatted.push({
-      "Transaction ID":           r.id,
-      "Status":                   r.status,
-      "Requestor Name":           r.requestor,
-      "Approver Name":            r.approver || " ",
-      "Purpose":                  r.purpose || " ",
-      "Purpose Detail":           r.purposeDetail || r.PurposeDetails || "-",
-      "Cost Center":              r.costCenter || " ",
-      "Submitted Date":           r.submitted || " ",
-      "Approved Date":            r.approved || " ",
-      "Expected Delivery Date":   r.expected || " ",
-      "Total Quantity":           Number(r.qty || 0),
-      "Total Tag Price":          Number(r.price || 0),
-    });
+    const txnBase: (string | number)[] = [
+      r.id,
+      r.status,
+      r.requestor,
+      r.approver || "",
+      r.purpose || "",
+      r.purposeDetail || r.PurposeDetails || "",
+      r.costCenter || "",
+      r.submitted || "",
+      r.approvedDates || r.approved || "",
+      r.expected || "",
+      Number(r.qty || 0),
+      Number(r.price || 0),
+    ];
+
+    const items = r.items && r.items.length > 0 ? r.items : null;
+
+    if (items) {
+      for (const item of items) {
+        data.push([
+          ...txnBase,
+          item.sku || "",
+          item.productCode || "",
+          item.color || "",
+          item.size || "",
+          Number(item.unitPrice || 0),
+          Number(item.qty || 0),
+          Number(item.lineTotal || 0),
+        ]);
+      }
+    } else {
+      data.push([...txnBase, "", "", "", "", "", "", ""]);
+    }
   }
 
-  const worksheet = XLSX.utils.json_to_sheet(formatted);
+  const worksheet = XLSX.utils.aoa_to_sheet(data);
 
-  // ✅ Column widths matching 12 columns
   worksheet["!cols"] = [
     { wch: 18 },  // Transaction ID
     { wch: 12 },  // Status
@@ -162,10 +208,17 @@ export async function exportToExcel(rows: ExportRequestRow[]): Promise<void> {
     { wch: 28 },  // Purpose Detail
     { wch: 16 },  // Cost Center
     { wch: 14 },  // Submitted Date
-    { wch: 14 },  // Approved Date
+    { wch: 22 },  // Approved Date
     { wch: 20 },  // Expected Delivery Date
     { wch: 14 },  // Total Quantity
-    { wch: 16 },  // Total Tag Price
+    { wch: 16 },  // Total Tag Price (request)
+    { wch: 18 },  // SKU Code
+    { wch: 22 },  // Product Code
+    { wch: 14 },  // Color
+    { wch: 14 },  // Size
+    { wch: 18 },  // Tag Price Per Unit
+    { wch: 12 },  // Quantity
+    { wch: 18 },  // Total Tag Price (item)
   ];
 
   const workbook = XLSX.utils.book_new();

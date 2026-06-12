@@ -193,8 +193,6 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
   const STORAGE_KEY_DRAFT = "myreq_draft_count";
   const STORAGE_KEY_FAILED = "myreq_failed_count";
 
-  // null = not yet checked; true/false = cached result
-  const isAdminFinanceRef = React.useRef<boolean | null>(null);
 
 
   // Tracks if approved/rejected count increased → triggers re-render
@@ -413,35 +411,11 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
       const myEmail = String(context.pageContext.user.email || "").trim();
       const esc = (v: string): string => String(v || "").replace(/'/g, "''");
 
-      // One-time check: is this user an Admin or Finance viewer in EForm Users?
-      if (isAdminFinanceRef.current === null) {
-        try {
-          const faCheckUrl =
-            `${siteUrl}/_api/web/lists/getbytitle('EForm%20Users')/items` +
-            `?$top=1&$select=FinanceAdmin&$filter=Email eq '${esc(myEmail)}'`;
-          const faRes = await context.spHttpClient.get(
-            faCheckUrl,
-            SPHttpClient.configurations.v1,
-            { headers: { Accept: "application/json;odata=nometadata", "odata-version": "" } }
-          );
-          if (faRes.ok) {
-            const faJson = await faRes.json() as { value?: Array<{ FinanceAdmin?: string }> };
-            const fa = String(faJson.value?.[0]?.FinanceAdmin || "").trim();
-            isAdminFinanceRef.current = fa === "Admin" || fa === "Finance";
-          } else {
-            isAdminFinanceRef.current = false;
-          }
-        } catch {
-          isAdminFinanceRef.current = false;
-        }
-      }
-      const isAdminFinance = isAdminFinanceRef.current === true;
-
-      // Regular users see only their own requests; Admin/Finance see all (client-side filtered)
-      const clauses: string[] = [`WorkflowStatus ne 'Failed'`];
-      if (!isAdminFinance) {
-        clauses.unshift(`Requester/EMail eq '${esc(myEmail)}'`);
-      }
+      // Always show only the logged-in user's own requests
+      const clauses: string[] = [
+        `Requester/EMail eq '${esc(myEmail)}'`,
+        `WorkflowStatus ne 'Failed'`,
+      ];
 
       if (statusSelected.length > 0) {
         const statusTerms: string[] = [];
@@ -493,13 +467,11 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
         clauses.push(`substringof('${q}',Requester/Title)`);
       }
 
-      // Admin/Finance users need ApprovalChainJSON for client-side canViewRequest filtering
-      const extraSelect = isAdminFinance ? ",ApprovalChainJSON" : "";
       const url =
         `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items` +
         `?$top=5000&$select=Id,Title,RequestNumber,WorkflowStatus,TotalQuantity,TotalAmount,Modified,` +
         `PurposeDetails,RequestCreatedOn,RequestSubmittedOn,FinalDecisionDate,ApprovedDates,ExpectedDeliveryDate,ApproverNames,` +
-        `Requester/Title,Requester/EMail,CurrentApprover/Title,Purpose/Title,CostCenter/Title,Department/Title${extraSelect}` +
+        `Requester/Title,Requester/EMail,CurrentApprover/Title,Purpose/Title,CostCenter/Title,Department/Title` +
         `&$expand=Requester,CurrentApprover,Purpose,CostCenter,Department` +
         `&$filter=${clauses.join(" and ")}` +
         `&$orderby=Id desc`;
@@ -513,25 +485,7 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
         nextUrl = json["@odata.nextLink"];
       }
 
-      // Admin/Finance: keep only records where they are the requestor OR have canViewRequest=true
-      const myEmailLower = myEmail.toLowerCase();
-      const visibleItems = isAdminFinance
-        ? allItems.filter((it) => {
-            if (String(it.Requester?.EMail || "").toLowerCase() === myEmailLower) return true;
-            try {
-              const chain = JSON.parse(String(it.ApprovalChainJSON || "{}")) as {
-                allApprovalLevels?: Array<{ approverEmail?: string; canViewRequest?: boolean }>;
-              };
-              return (chain.allApprovalLevels || []).some(
-                (l) =>
-                  String(l.approverEmail || "").toLowerCase() === myEmailLower &&
-                  l.canViewRequest === true
-              );
-            } catch {
-              return false;
-            }
-          })
-        : allItems;
+      const visibleItems = allItems;
 
       const mappedRows: Row[] = (visibleItems || []).map((it) => {
         const workflowStatus = String(it.WorkflowStatus || "Submitted");
