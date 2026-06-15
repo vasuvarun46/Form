@@ -93,6 +93,7 @@ export default function AllRequestPage(
 
   const [searchDraft, setSearchDraft] = React.useState<string>("");
   const [searchText, setSearchText] = React.useState<string>("");
+  const [searchField, setSearchField] = React.useState<"TransactionID" | "RequesterName">("TransactionID");
   
 
   const [statusFilter, setStatusFilter] = React.useState<string[]>([]);
@@ -387,7 +388,11 @@ export default function AllRequestPage(
 
       if (searchText.trim()) {
         const q = esc(searchText.trim());
-        clauses.push(`(substringof('${q}',Title) or substringof('${q}',Requester/Title))`);
+        if (searchField === "RequesterName") {
+          clauses.push(`substringof('${q}',Requester/Title)`);
+        } else {
+          clauses.push(`substringof('${q}',Title)`);
+        }
       }
 
       // ✅ Your same query (Department is Lookup)
@@ -521,6 +526,7 @@ export default function AllRequestPage(
     expectedFrom,
     expectedTo,
     searchText,
+    searchField,
   ]);
 
   React.useEffect(() => {
@@ -813,15 +819,15 @@ export default function AllRequestPage(
         setSearchText(searchDraft);
         setPageIndex(0);
       }}
-      onSearchWithField={({ field, text }) => {   
-        void field;          
+      onSearchWithField={({ field, text }) => {
+        setSearchField(field);
         setSearchText(text);
         setPageIndex(0);
       }}
-      onClear={() => {                             
+      onClear={() => {
         setSearchDraft("");
         setSearchText("");
-        
+        setSearchField("TransactionID");
         setPageIndex(0);
       }}
 
