@@ -346,7 +346,7 @@ export function useTeamRequestsLogic(
   context: WebPartContext,
   approvalFlowUrl: string,
   searchField: string,
-  permissions?: SecurityPermissions,
+  _permissions?: SecurityPermissions,
   productFlowUrl?: string
 ) {
   const [rows, setRows] = React.useState<Row[]>([]);
@@ -1115,42 +1115,117 @@ export function useTeamRequestsLogic(
         throw new Error("Security key (secret) not found in WorkflowConfiguration");
 
       // ── STOCK VALIDATION (Approve only) ────────────────────────────────
-      // Run regardless of result — mismatch data is forwarded to PA.
-      // Approval is never blocked here; PA decides what to do with it.
       let quantityShort = false;
       let skuMismatches: SkuMismatch[] = [];
+      let finalTotalQty = row.qty;
+      let finalTotalAmount = row.price;
 
       if (action === "Approve") {
         const check = await validateRequestItemsBeforeApprove(row);
         quantityShort = check.quantityShort;
         skuMismatches = check.skuMismatches;
+
+        // ── FINAL APPROVER DETECTION ────────────────────────────────────
+        // The final approver is the one at the highest order in the approval
+        // chain. Only the final approver actually writes adjusted quantities
+        // to SharePoint — intermediate approvers just pass mismatch data along.
+        const loginEmail = String(currentUserEmailRaw || "").trim().toLowerCase();
+        const activeLevels = row.allApprovalLevels.filter(
+          (l) => l.canApproveRequest === true
+        );
+        let isFinalApprover = false;
+        if (activeLevels.length > 0) {
+          const maxOrder = Math.max(...activeLevels.map((l) => l.order));
+          isFinalApprover = activeLevels.some(
+            (l) => l.approverEmail === loginEmail && l.order === maxOrder
+          );
+        } else if (!row.hasMultipleApprovals) {
+          // Single-approver record with no level data — they are always final
+          isFinalApprover = true;
+        }
+
+        // ── UPDATE SP QUANTITIES (Final Approver only, verifiable mismatches) ─
+        // All SharePoint writes must complete before Power Automate is called.
+        if (isFinalApprover && quantityShort && skuMismatches.length > 0) {
+          const requestId = Number(row.spId || 0);
+
+          for (const mismatch of skuMismatches) {
+            // Skip unverifiable items (availableQty === -1 sentinel)
+            if (mismatch.availableQty === -1) continue;
+            const approvedQty = Math.max(0, mismatch.availableQty);
+            await context.spHttpClient.post(
+              `${siteUrl}/_api/web/lists/getbytitle('InventoryRequestItems')/items(${mismatch.itemId})`,
+              SPHttpClient.configurations.v1,
+              {
+                headers: {
+                  Accept: "application/json;odata=nometadata",
+                  "Content-Type": "application/json;odata=nometadata",
+                  "odata-version": "",
+                  "IF-MATCH": "*",
+                  "X-HTTP-Method": "MERGE",
+                },
+                body: JSON.stringify({
+                  Quantity: approvedQty,
+                  LineTotal: approvedQty * mismatch.tagPricePerUnit,
+                }),
+              }
+            );
+          }
+
+          // Re-fetch all active items to calculate accurate updated totals
+          const updatedItems = await getActiveRequestItems(requestId);
+          finalTotalQty = updatedItems.reduce(
+            (sum, x) => sum + Number(x.Quantity || 0),
+            0
+          );
+          finalTotalAmount = updatedItems.reduce(
+            (sum, x) => sum + Number(x.Quantity || 0) * Number(x.UnitPrice || 0),
+            0
+          );
+
+          // Persist new totals to InventoryRequests before triggering PA
+          await context.spHttpClient.post(
+            `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items(${requestId})`,
+            SPHttpClient.configurations.v1,
+            {
+              headers: {
+                Accept: "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata",
+                "odata-version": "",
+                "IF-MATCH": "*",
+                "X-HTTP-Method": "MERGE",
+              },
+              body: JSON.stringify({
+                TotalQuantity: finalTotalQty,
+                TotalAmount: finalTotalAmount,
+              }),
+            }
+          );
+        }
       }
 
       // ── DETAIL VIEW URL ────────────────────────────────────────────────
-      // Adjust the page path to match your SharePoint site structure.
       const siteOrigin = String(context.pageContext.web.absoluteUrl || "").replace(/\/$/, "");
       const detailViewUrl = `${siteOrigin}/SitePages/RequestDetail.aspx?requestId=${row.spId}`;
 
       // ── PAYLOAD ────────────────────────────────────────────────────────
+      // totalQuantity / totalTagPrice carry the post-adjustment values so
+      // Power Automate emails show the final approved figures, not the
+      // originally requested ones.
       const payload: ApprovalFlowPayload = {
-        // Core approval fields
         requestId: row.spId,
         actorEmail: currentUserEmailRaw,
         position: String(profile?.jobPosition || "Unknown"),
         action: action as FlowAction,
         comments: comments || "",
-
-        // Stock shortage fields
-        quantityShort,   // boolean — true if any SKU is short
-        skuMismatches,   // array — one entry per mismatched SKU
-
-        // Request-level fields for the shortage email body
-        transactionId: row.id,       // display TX ID shown in the UI
-        detailViewUrl,               // clickable link in email
-        totalQuantity: row.qty,      // TotalQuantity from InventoryRequests
-        totalTagPrice: row.price,    // TotalAmount from InventoryRequests
-        purpose: row.purpose,  // Purpose lookup title
-        status: row.status,   // current WorkflowStatus
+        quantityShort,
+        skuMismatches,
+        transactionId: row.id,
+        detailViewUrl,
+        totalQuantity: finalTotalQty,
+        totalTagPrice: finalTotalAmount,
+        purpose: row.purpose,
+        status: row.status,
       };
 
       // ── CALL POWER AUTOMATE ────────────────────────────────────────────
@@ -1174,13 +1249,15 @@ export function useTeamRequestsLogic(
           prev.map((r) =>
             r.spId === row.spId
               ? {
-                ...r,
-                status: newStatus,
-                approver: "",
-                currentApproverId: 0,
-                currentApproverEmail: "",
-                lastActivityIso: new Date().toISOString(),
-              }
+                  ...r,
+                  status: newStatus,
+                  qty: finalTotalQty,
+                  price: finalTotalAmount,
+                  approver: "",
+                  currentApproverId: 0,
+                  currentApproverEmail: "",
+                  lastActivityIso: new Date().toISOString(),
+                }
               : r
           )
         );
@@ -1193,9 +1270,10 @@ export function useTeamRequestsLogic(
       approvalFlowUrl,
       flowApiKey,
       currentUserEmailRaw,
-      permissions,
       profile,
       validateRequestItemsBeforeApprove,
+      getActiveRequestItems,
+      siteUrl,
     ]
   );
 
