@@ -10,7 +10,7 @@ import {
   dedupeLabels,
 } from "./allRequestFilterUtils";
 import AllRequestRender from "./AllRequestReturnFunction";
-import { exportToExcel } from "../ExportExcel";
+import { exportToExcel, fetchExportItemsByRequestIds } from "../ExportExcel";
 import { SPHttpClient, SPHttpClientResponse } from "@microsoft/sp-http";
 
 /* =====================================================
@@ -286,102 +286,6 @@ export default function AllRequestPage(
   };
 
 
-  type InventoryRequestItemForExport = {
-    RequestIDId?: number;
-    SKUCode?: string;
-    ProductDescription?: string;
-    Quantity?: number;
-    UnitPrice?: number;
-    RowStatus?: string;
-  };
-
-  const fetchExportItemsByRequestIds = React.useCallback(
-    async (requestIds: number[]): Promise<Record<number, Array<{
-      sku: string;
-      productDescription: string;
-      qty: number;
-      unitPrice: number;
-    }>>> => {
-      const out: Record<number, Array<{
-        sku: string;
-        productDescription: string;
-        qty: number;
-        unitPrice: number;
-      }>> = {};
-
-      const uniqueIds = Array.from(
-        new Set(
-          requestIds
-            .map((id) => Number(id))
-            .filter((id) => Number.isFinite(id) && id > 0)
-        )
-      );
-      if (uniqueIds.length === 0) return out;
-
-      const siteUrl = context.pageContext.web.absoluteUrl;
-      const chunkSize = 25;
-
-      for (let i = 0; i < uniqueIds.length; i += chunkSize) {
-        const chunk = uniqueIds.slice(i, i + chunkSize);
-        const requestFilter = chunk.map((id) => `RequestIDId eq ${id}`).join(" or ");
-
-        let nextUrl: string | undefined =
-          `${siteUrl}/_api/web/lists/getbytitle('InventoryRequestItems')/items` +
-          `?$top=5000` +
-          `&$select=RequestIDId,SKUCode,ProductDescription,Quantity,UnitPrice,LineNumber,Id,RowStatus` +
-          `&$filter=(${requestFilter})` +
-          `&$orderby=RequestIDId asc,LineNumber asc,Id asc`;
-
-        while (nextUrl) {
-          const res: SPHttpClientResponse = await context.spHttpClient.get(
-            nextUrl,
-            SPHttpClient.configurations.v1,
-            {
-              headers: {
-                Accept: "application/json;odata=nometadata",
-                "odata-version": "",
-              },
-            }
-          );
-
-          if (!res.ok) {
-            const text = await res.text();
-            throw new Error(`Failed to load request line items (${res.status}): ${text}`);
-          }
-
-          const json = (await res.json()) as {
-            value?: InventoryRequestItemForExport[];
-            "@odata.nextLink"?: string;
-            "odata.nextLink"?: string;
-          };
-          const batch = Array.isArray(json.value) ? json.value : [];
-
-          for (const item of batch) {
-            const requestId = Number(item?.RequestIDId || 0);
-            if (!requestId) continue;
-            const rowStatus = String(item?.RowStatus || "").trim().toLowerCase();
-            if (rowStatus === "inactive") continue;
-
-            if (!out[requestId]) out[requestId] = [];
-            out[requestId].push({
-              sku: String(item?.SKUCode || "-"),
-              productDescription: String(item?.ProductDescription || "-"),
-              qty: Number(item?.Quantity || 0),
-              unitPrice: Number(item?.UnitPrice || 0),
-            });
-          }
-
-          nextUrl =
-            json["@odata.nextLink"] ||
-            json["odata.nextLink"] ||
-            undefined;
-        }
-      }
-
-      return out;
-    },
-    [context]
-  );
 
   function formatDateDdMmYyyy(iso: string | undefined): string {
     if (!iso) return "-";
@@ -413,6 +317,7 @@ export default function AllRequestPage(
     try {
       const sortedByInternalIdDesc = [...data].sort((a, b) => b.spId - a.spId);
       const itemsByRequestId = await fetchExportItemsByRequestIds(
+        context,
         sortedByInternalIdDesc.map((r) => r.spId)
       );
       const exportRows = sortedByInternalIdDesc.map((r) => ({
@@ -872,6 +777,13 @@ export default function AllRequestPage(
           </button>
         </div>
       ),
+    },
+    {
+      key: "approval",
+      header: "Approval",
+      thClassName: "w-[6%] text-left",
+      tdClassName: "w-[6%] text-left",
+      render: () => <span className="text-gray-400">-</span>,
     },
   ];
 
