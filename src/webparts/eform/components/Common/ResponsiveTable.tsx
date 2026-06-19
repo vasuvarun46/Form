@@ -263,7 +263,7 @@ export function ResponsiveTable<T extends BaseRow>({
                       c.key === "export"
                         ? "flex flex-col items-start gap-2"
                         : c.key === "approval"
-                          ? "flex flex-col items-start gap-2"
+                          ? "flex flex-col items-center justify-center gap-2"
                           : ""
                     }
                   >

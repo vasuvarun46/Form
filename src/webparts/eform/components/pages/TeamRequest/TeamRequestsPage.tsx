@@ -453,8 +453,8 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
     {
       key: "approval",
       header: "Approval",
-      thClassName: "w-[10%]",
-      tdClassName: "w-[10%]",
+      thClassName: "w-[10%] text-center",
+      tdClassName: "w-[10%] text-center",
       render: (r: Row) => {
 
         // ── 0. Permission guard ────────────────────────────────────────────────
