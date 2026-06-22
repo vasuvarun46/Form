@@ -439,19 +439,19 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
     {
       key: "approval",
       header: "Approval",
-      thClassName: "w-[10%]",
-      tdClassName: "w-[10%]",
+      thClassName: "w-[10%] text-left",
+      tdClassName: "w-[10%] text-left",
       render: (r: Row) => {
 
         // ── 0. Permission guard ────────────────────────────────────────────────
         if (!props.permissions.approveTeam) {
-          return <div className="text-center text-gray-500"></div>;
+          return <div className="text-left text-gray-500"></div>;
         }
         const normalizedStatus = String(r.status || "").trim().toLowerCase();
 
         // ── 1. Terminal states → always dash ──────────────────────────────────
         if (normalizedStatus === "approved" || normalizedStatus === "rejected") {
-          return <div className="text-center text-gray-400">–</div>;
+          return <div className="text-left text-gray-400">–</div>;
         }
 
         // ── 2. Only act on submitted / in-approval ────────────────────────────
@@ -461,7 +461,7 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
           normalizedStatus === "in-approval";
 
         if (!isActionableStatus) {
-          return <div className="text-center text-gray-400">–</div>;
+          return <div className="text-left text-gray-400">–</div>;
         }
 
         const loginEmail = String(
@@ -494,7 +494,7 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
               </div>
             );
           }
-          return <div className="text-center text-gray-400">–</div>;
+          return <div className="text-left text-gray-400">–</div>;
         }
 
         // ── 4. MultipleApprover: parse stages from ApprovalChainJSON ──────────
@@ -586,7 +586,7 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
           // A2: Stage 1 already approved (current approver pointer moved away)
           //     → waiting for stage 2 (final approver) to act
           return (
-            <div className="text-center text-[11px] text-gray-500 leading-tight px-1">
+            <div className="text-left text-[11px] text-gray-500 leading-tight px-1">
               Pending approval from the final approver.
             </div>
           );
@@ -620,14 +620,14 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
           // B2: Stage 2 is not yet the current approver
           //     → stage 1 hasn't acted yet → waiting
           return (
-            <div className="text-center text-[11px] text-gray-500 leading-tight px-1">
+            <div className="text-left text-[11px] text-gray-500 leading-tight px-1">
               Awaiting from the first approver.
             </div>
           );
         }
 
         // ── Case C: Login user is not in stage 1 or stage 2 ──────────────────
-        return <div className="text-center text-gray-400">–</div>;
+        return <div className="text-left text-gray-400">–</div>;
       },
     },
   ];
