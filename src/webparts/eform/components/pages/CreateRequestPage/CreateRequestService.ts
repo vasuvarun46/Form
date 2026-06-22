@@ -263,7 +263,28 @@ export async function buildApprovalChainFromLists(
       continue;
     }
 
-    const approverEmail = String(requester[emailColInternalName] || "").trim();
+    let approverEmail = String(requester[emailColInternalName] || "").trim();
+
+    // Fallback chain: if this role's email is empty, climb to the next
+    // higher-authority role (Manager → Executive → C1 → C2 …)
+    if (!approverEmail) {
+      const currentIdx = approvalFlagFieldsLowToHigh.indexOf(flagField);
+      for (let hi = currentIdx + 1; hi < approvalFlagFieldsLowToHigh.length; hi++) {
+        const higher = approvalFlagFieldsLowToHigh[hi];
+        const hCandidates = roleKeys(higher.Title);
+        let hEmailCol: string | undefined;
+        for (const hk of hCandidates) {
+          hEmailCol = emailFieldMap.get(hk);
+          if (hEmailCol) break;
+        }
+        if (!hEmailCol) continue;
+        const hEmail = String(requester[hEmailCol] || "").trim();
+        if (hEmail) {
+          approverEmail = hEmail;
+          break;
+        }
+      }
+    }
 
     if (isSingleApproval) {
       const emailKey = approverEmail.toUpperCase();

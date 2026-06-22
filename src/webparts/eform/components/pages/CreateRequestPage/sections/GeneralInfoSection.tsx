@@ -21,9 +21,8 @@ function Info({ label, value }: { label: string; value: React.ReactNode }): JSX.
 export default function GeneralInfoSection({ userData, card, aadProfile }: Props): JSX.Element {
   const u = userData[0];
 
-  // Azure AD takes priority; EForm Users list is the fallback
   const displayName   = aadProfile?.displayName   || u?.Title              || "-";
-  const jobPosition   = aadProfile?.jobTitle       || u?.Jobposition        || "-";
+  const jobPosition   = aadProfile?.jobTitle                               || "-";
   const department    = u?.Department?.Title       || aadProfile?.department || "-";
 
   return (

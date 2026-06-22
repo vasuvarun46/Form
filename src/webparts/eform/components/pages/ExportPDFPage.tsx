@@ -250,6 +250,27 @@ async function fetchSPUserProfile(
   }
 }
 
+async function fetchEFormUserJobPosition(
+  context: WebPartContext,
+  email: string
+): Promise<string> {
+  try {
+    const siteUrl = context.pageContext.web.absoluteUrl;
+    const safeEmail = email.replace(/'/g, "''");
+    const url =
+      `${siteUrl}/_api/web/lists/getbytitle('EForm%20Users')/items` +
+      `?$select=Jobposition` +
+      `&$filter=Email eq '${safeEmail}'` +
+      `&$top=1`;
+    const res = await context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+    if (!res.ok) return "";
+    const json = await res.json();
+    return cleanDisplayText(String(json?.value?.[0]?.Jobposition || ""));
+  } catch {
+    return "";
+  }
+}
+
 function parseMultipleApproverData(raw: unknown): ParsedMultipleApproverData | null {
   if (raw === null || raw === undefined) return null;
 
@@ -334,7 +355,7 @@ function parseMultipleApproverData(raw: unknown): ParsedMultipleApproverData | n
 
       const resolvedPosition = cleanPositionText(
         String(stage.approverJobPosition ?? stage.Jobposition ?? stage.JobPosition ?? "")
-      ) || (matchedLevel ? cleanDisplayText(matchedLevel.approvalRole) : "");
+      );
 
       return {
         stage: Number.isFinite(stageValue) ? stageValue : 0,
@@ -683,7 +704,7 @@ export default function ExportPDFPage({
         return [{
           slot: 1,
           name: cleanDisplayText(exportData?.approverNames || exportData?.approverName),
-          position: cleanDisplayText(actedStage.approverJobPosition || actedStage.approvalRole || ""),
+          position: cleanDisplayText(actedStage.approverJobPosition || ""),
           status: normalizeApprovalStatus(actedStage.action || actedStage.Status),
           date: formatDateDdMmYyyy(actedStage.date || actedStage.Date),
           reason: cleanDisplayText(actedStage.reason),
@@ -750,7 +771,7 @@ export default function ExportPDFPage({
       return {
         slot: slotNumber,
         name: cleanDisplayText(s.approverName),
-        position: cleanDisplayText(s.approverJobPosition || s.approvalRole || ""),
+        position: cleanDisplayText(s.approverJobPosition || ""),
         status: normalizeApprovalStatus(s.action || s.Status),
         date: formatDateDdMmYyyy(s.date || s.Date),
         reason: cleanDisplayText(s.reason),
@@ -891,9 +912,15 @@ export default function ExportPDFPage({
       for (const email of uniqueEmails) {
         try {
           const profile = await fetchSPUserProfile(context, email);
-          if (profile.jobTitle) newPositions[email] = profile.jobTitle;
+          if (profile.jobTitle) {
+            newPositions[email] = profile.jobTitle;
+          } else {
+            // Fallback: query EForm Users list for actual Jobposition
+            const eformPos = await fetchEFormUserJobPosition(context, email);
+            if (eformPos) newPositions[email] = eformPos;
+          }
         } catch {
-          // Silently fall back to position stored in MultipleApproverData
+          // silently skip
         }
       }
 
