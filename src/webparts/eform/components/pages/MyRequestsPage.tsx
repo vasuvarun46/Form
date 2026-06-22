@@ -929,7 +929,6 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
 
             <MyRequestHeader
               onCreate={props.onCreate}
-              selectedCount={selectedIds.length}
               onSelectAllRequests={selectAllFilteredRows}
               onRestoreManualSelection={restoreManualSelection}
               manualSelectedCount={manualSelectedIds.length}
@@ -950,12 +949,6 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
                   items: itemsByRequestId[r.spId] || [],
                 }));
                 await exportToExcel(exportRows);
-              }}
-              onExportFirst={async () => {
-                if (!canExport || pageRows.length === 0) return;
-                const first = pageRows[0];
-                const itemsByRequestId = await fetchExportItemsByRequestIds(context, [first.spId]);
-                await exportToExcel([{ ...first, items: itemsByRequestId[first.spId] || [] }]);
               }}
               canExport={canExport}
               showDisabledExport={props.permissions.viewExportOwnReport && rows.length === 0 && !hasAppliedFilters}

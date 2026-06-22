@@ -40,11 +40,14 @@ const canAccessRoute = (
 };
 
 // ── Parse deep-link params once at module level ──
-// Accepts requestId / RequestId (case-insensitive) so both the Power Automate
-// generated URL (?requestId=N) and any manually constructed links work.
+// SPFx runs inside an iframe — the email link query params (?requestId=N)
+// are on the top-level window URL, not the iframe URL. Try window.top first,
+// fall back to window.location for local/workbench environments.
 const _dlParams = (() => {
   try {
-    const p = new URLSearchParams(window.location.search);
+    let search = window.location.search;
+    try { search = window.top?.location?.search ?? search; } catch { /* cross-origin — use iframe URL */ }
+    const p = new URLSearchParams(search);
     const rid = p.get("requestId") || p.get("RequestId");
     if (!rid) return undefined;
     const n = parseInt(rid, 10);
@@ -79,6 +82,9 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
   const [route, setRoute] = React.useState<Route>(
     _dlParams ? "home" : (_initialHashRoute || "home")
   );
+  // true while the deep-link SP fetch is in flight — keeps the whole component
+  // hidden so neither a blank screen nor the home screen flashes before navigation.
+  const [dlValidating, setDlValidating] = React.useState<boolean>(!!_dlParams);
   const [selectedSpId, setSelectedSpId] = React.useState<number | undefined>(undefined);
   const [dlAccessDenied, setDlAccessDenied] = React.useState(false);
   const [exportSource, setExportSource] = React.useState<ExportSource>("my");
@@ -173,6 +179,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
         // Validate TransactionId matches the record's Title (when provided)
         if (transactionId && item.Title !== transactionId) {
           setRoute("home");
+          setDlValidating(false);
           _cleanDlUrl("#");
           return;
         }
@@ -198,6 +205,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
 
         if (!isRequester && !hasChainAccess) {
           setDlAccessDenied(true);
+          setDlValidating(false);
           return;
         }
 
@@ -206,10 +214,12 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
         setSelectedSpId(item.Id);
         setExportSource("my");
         setRoute("exportPdf");
+        setDlValidating(false);
         _cleanDlUrl("#");
       })
       .catch(() => {
         setRoute("home");
+        setDlValidating(false);
         _cleanDlUrl("#");
       });
   }, [context]);
@@ -625,6 +635,16 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
         );
     }
   };
+
+  if (dlValidating) {
+    return (
+      <div className={`${styles.eform} pdf-thai`}>
+        <div className="p-6 text-[12px] text-gray-600">
+          <Loading />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ErrorBoundary>

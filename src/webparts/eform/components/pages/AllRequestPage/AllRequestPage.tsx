@@ -829,16 +829,6 @@ export default function AllRequestPage(
       onSelectAllRequests={onSelectAllRequests}
       onRestoreManualSelection={onRestoreManualSelection}
       onExportExcel={onExportExcel}
-      onExportCurrentPage={async () => {
-        if (!canExport || pageRows.length === 0) return;
-        try {
-          const first = pageRows[0];
-          const itemsByRequestId = await fetchExportItemsByRequestIds(context, [first.spId]);
-          await exportToExcel([{ ...first, items: itemsByRequestId[first.spId] || [] }]);
-        } catch (e: unknown) {
-          setError(`Excel export failed: ${e instanceof Error ? e.message : "Unknown error"}`);
-        }
-      }}
       headerChecked={
         sortedRows.length > 0 &&
         sortedRows.every((r) => selectedIds.includes(String(r.id)))

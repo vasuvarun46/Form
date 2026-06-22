@@ -3,10 +3,8 @@ import BaseInnerHeader from "./BaseInnerHeader";
 
 type TeamRequestHeaderProps = {
   loading?: boolean;
-  selectedCount: number;
   manualSelectedCount: number;
   onExportExcel: (mode: "all" | "selected") => Promise<void>;
-  onExportFirst: () => Promise<void>;
   onSelectAllRequests: () => void;
   onRestoreManualSelection: () => void;
   canExport: boolean;
@@ -18,10 +16,8 @@ export default function TeamRequestHeader(
 ): JSX.Element {
   const {
     loading,
-    selectedCount,
     manualSelectedCount,
     onExportExcel,
-    onExportFirst,
     onSelectAllRequests,
     onRestoreManualSelection,
     canExport,
@@ -78,13 +74,7 @@ export default function TeamRequestHeader(
                 type="button"
                 disabled={exportButtonDisabled}
                 onClick={() => {
-                  if (exportButtonDisabled) return;
-                  if (selectedCount === 0) {
-                    setIsExporting(true);
-                    onExportFirst().finally(() => setIsExporting(false));
-                  } else {
-                    setOpen((prev) => !prev);
-                  }
+                  if (!exportButtonDisabled) setOpen((prev) => !prev);
                 }}
                 className={[
                   "h-8 px-3 rounded-md text-[12px] font-medium transition",

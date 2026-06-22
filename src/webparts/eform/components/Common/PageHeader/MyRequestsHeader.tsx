@@ -3,10 +3,8 @@ import { useIsDesktop } from "../../hooks/useIsDesktop";
 
 type MyRequestHeaderProps = {
   onCreate: () => void;
-  selectedCount: number;
   manualSelectedCount: number;
   onExportExcel: (mode: "all" | "selected") => Promise<void>;
-  onExportFirst: () => Promise<void>;
   onSelectAllRequests: () => void;
   onRestoreManualSelection: () => void;
   canExport: boolean;
@@ -18,10 +16,8 @@ export default function MyRequestHeader(
 ): JSX.Element {
   const {
     onCreate,
-    selectedCount,
     manualSelectedCount,
     onExportExcel,
-    onExportFirst,
     onSelectAllRequests,
     onRestoreManualSelection,
     canExport,
@@ -97,14 +93,7 @@ export default function MyRequestHeader(
                   type="button"
                   disabled={exportButtonDisabled}
                   onClick={() => {
-                    if (exportButtonDisabled) return;
-                    if (selectedCount === 0) {
-                      // Nothing selected → directly download the first visible record
-                      setIsExporting(true);
-                      onExportFirst().finally(() => setIsExporting(false));
-                    } else {
-                      setOpen((prev) => !prev);
-                    }
+                    if (!exportButtonDisabled) setOpen((prev) => !prev);
                   }}
                   className={[
                     isDesktop
