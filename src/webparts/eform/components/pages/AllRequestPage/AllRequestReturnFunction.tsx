@@ -73,9 +73,11 @@ type Props = {
   onSelectAllRequests: () => void;
   onRestoreManualSelection: () => void;
   onExportExcel: (mode: "all" | "selected") => Promise<void>;
+  onExportCurrentPage: () => Promise<void>;
+  headerChecked: boolean;
 
   onSearchWithField?: (args: { field: SearchFieldKey; text: string }) => void;
-  onClear?: () => void;   // ✅ ADD THIS
+  onClear?: () => void;
 
   canExport: boolean;
   showDisabledExport: boolean;
@@ -125,6 +127,8 @@ export default function AllRequestRender({
   onSelectAllRequests,
   onRestoreManualSelection,
   onExportExcel,
+  onExportCurrentPage,
+  headerChecked,
   onSearchWithField,
   onClear,
   canExport,
@@ -179,10 +183,10 @@ export default function AllRequestRender({
               onSelectAllRequests={onSelectAllRequests}
               onRestoreManualSelection={onRestoreManualSelection}
               onExportExcel={onExportExcel}
+              onExportCurrentPage={onExportCurrentPage}
               canExport={canExport}
               showDisabledExport={showDisabledExport}
-              manualSelectedCount={manualSelectedCount}   // ✅ ADD — but use prop below
-
+              manualSelectedCount={manualSelectedCount}
             />
           </div>
           <div className={`${pageBg} flex-1 min-h-0 px-3 sm:px-6 py-4`}>
@@ -209,9 +213,9 @@ export default function AllRequestRender({
               onSelectAllRequests={onSelectAllRequests}
               onRestoreManualSelection={onRestoreManualSelection}
               onExportExcel={onExportExcel}
+              onExportCurrentPage={onExportCurrentPage}
               canExport={canExport}
               manualSelectedCount={manualSelectedCount}
-
             />
           </div>
 
@@ -287,10 +291,11 @@ export default function AllRequestRender({
                     tableBreakpoint={1024}
                     wrapHeaderWords={true}
                     disableHorizontalScroll={true}
-                    showCheckbox={false}
+                    showCheckbox={true}
                     selectedIds={selectedIds}
                     onToggleRow={handleToggleRow}
                     onToggleAll={handleToggleAll}
+                    headerChecked={headerChecked}
                   />
                 )}
 

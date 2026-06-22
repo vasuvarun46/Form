@@ -4,8 +4,9 @@ import BaseInnerHeader from "./BaseInnerHeader";
 type Props = {
   loading?: boolean;
   selectedCount: number;
-  manualSelectedCount: number;        // ✅ ADD
+  manualSelectedCount: number;
   onExportExcel: (mode: "all" | "selected") => Promise<void>;
+  onExportCurrentPage: () => Promise<void>;
   onSelectAllRequests: () => void;
   onRestoreManualSelection: () => void;
   canExport: boolean;
@@ -16,22 +17,21 @@ export default function AllRequestHeader(props: Props): JSX.Element {
   const {
     loading,
     selectedCount,
-    manualSelectedCount,               // ✅ ADD
+    manualSelectedCount,
     onExportExcel,
+    onExportCurrentPage,
     onSelectAllRequests,
     onRestoreManualSelection,
     canExport,
     showDisabledExport,
   } = props;
 
-  const isDisabled = selectedCount === 0 || !!loading;
-
   const [open, setOpen] = React.useState(false);
   const [isExporting, setIsExporting] = React.useState(false);
   const [mode, setMode] = React.useState<"all" | "selected">("all");
   const ref = React.useRef<HTMLDivElement | null>(null);
   const canShowExport = canExport || showDisabledExport === true;
-  const exportButtonDisabled = !canExport || isDisabled || isExporting;
+  const exportButtonDisabled = !canExport || !!loading || isExporting;
 
   // ✅ Close when clicking outside
   React.useEffect(() => {
@@ -76,7 +76,11 @@ export default function AllRequestHeader(props: Props): JSX.Element {
                 type="button"
                 disabled={exportButtonDisabled}
                 onClick={() => {
-                  if (!exportButtonDisabled) {
+                  if (exportButtonDisabled) return;
+                  if (selectedCount === 0) {
+                    setIsExporting(true);
+                    onExportCurrentPage().finally(() => setIsExporting(false));
+                  } else {
                     setOpen((prev) => !prev);
                   }
                 }}

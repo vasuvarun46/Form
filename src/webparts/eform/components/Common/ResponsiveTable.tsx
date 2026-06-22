@@ -32,6 +32,9 @@ type ResponsiveTableProps<T extends BaseRow> = {
   selectedIds?: RowId[];
   onToggleRow?: (id: RowId) => void;
   onToggleAll?: () => void;
+  // When provided, overrides the per-page allSelected calculation so the header
+  // checkbox can reflect cross-page "select all" state.
+  headerChecked?: boolean;
 };
 
 export function ResponsiveTable<T extends BaseRow>({
@@ -45,6 +48,7 @@ export function ResponsiveTable<T extends BaseRow>({
   selectedIds = [],
   onToggleRow,
   onToggleAll,
+  headerChecked,
 }: ResponsiveTableProps<T>): JSX.Element {
   const isTable = useIsDesktop(tableBreakpoint);
   const noHorizontalScroll = disableHorizontalScroll || minWidthClass === "min-w-0";
@@ -130,6 +134,9 @@ export function ResponsiveTable<T extends BaseRow>({
     rows.length > 0 &&
     rows.every(r => selectedIds.indexOf(String(r.id)) !== -1);
 
+  // headerChecked overrides the per-page allSelected when the parent tracks cross-page state
+  const headerIsChecked = headerChecked !== undefined ? headerChecked : allSelected;
+
   const someSelected = selectedIds.length > 0 && selectedIds.length < rows.length;
 
   /* ===================== DESKTOP / TABLE VIEW ===================== */
@@ -191,7 +198,7 @@ export function ResponsiveTable<T extends BaseRow>({
                 {/* NO indeterminate to avoid "-" */}
                 <input
                   type="checkbox"
-                  checked={allSelected}
+                  checked={headerIsChecked}
                   onChange={onToggleAll}
                   className={[
                     "h-3.5 w-3.5 rounded border-gray-300 accent-[#2563eb] cursor-pointer",

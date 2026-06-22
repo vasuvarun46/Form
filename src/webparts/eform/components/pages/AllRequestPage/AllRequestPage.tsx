@@ -110,7 +110,6 @@ export default function AllRequestPage(
   const [statusOptions, setStatusOptions] = React.useState<string[]>([]);
   const [purposeOptions, setPurposeOptions] = React.useState<string[]>([]);
   const [costCenterOptions, setCostCenterOptions] = React.useState<string[]>([]);
-  const [isAllSelected, setIsAllSelected] = React.useState(false);
 
   const STORAGE_KEY_APPROVED = "allreq_approved_count";
   const STORAGE_KEY_REJECTED = "allreq_rejected_count";
@@ -238,7 +237,6 @@ export default function AllRequestPage(
 
   const handleToggleRow = (id: string | number): void => {
     const idStr = String(id);
-    setIsAllSelected(false); // exit "all selected" mode
     setSelectedIds((prev) => {
       const updated = prev.includes(idStr)
         ? prev.filter((x) => x !== idStr)
@@ -248,27 +246,16 @@ export default function AllRequestPage(
     });
   };
 
-
   const handleToggleAll = (): void => {
-    if (isAllSelected) {
-
-      setIsAllSelected(false);
+    const allIds = sortedRows.map((r) => String(r.id));
+    const everythingSelected =
+      allIds.length > 0 && allIds.every((id) => selectedIds.includes(id));
+    if (everythingSelected) {
       setSelectedIds([]);
       setManualSelectedIds([]);
-      return;
-    }
-
-    const pageIds: string[] = pageRows.map((r) => String(r.id));
-    const allSelected: boolean = pageIds.every((id) => selectedIds.includes(id));
-
-    if (allSelected) {
-      const updated = selectedIds.filter((id) => !pageIds.includes(id));
-      setSelectedIds(updated);
-      setManualSelectedIds(updated);
     } else {
-      const updated = [...selectedIds, ...pageIds.filter((id) => !selectedIds.includes(id))];
-      setSelectedIds(updated);
-      setManualSelectedIds(updated);
+      setSelectedIds(allIds);
+      setManualSelectedIds(allIds);
     }
   };
 
@@ -276,12 +263,9 @@ export default function AllRequestPage(
     const ids = sortedRows.map((r) => String(r.id));
     setSelectedIds(ids);
     setManualSelectedIds(ids);
-    setIsAllSelected(true);
   };
 
-  //  onRestoreManualSelection
   const onRestoreManualSelection = (): void => {
-    setIsAllSelected(false);
     setSelectedIds(manualSelectedIds);
   };
 
@@ -778,13 +762,6 @@ export default function AllRequestPage(
         </div>
       ),
     },
-    {
-      key: "approval",
-      header: "Approval",
-      thClassName: "w-[6%] text-left",
-      tdClassName: "w-[6%] text-left",
-      render: () => <span className="text-gray-400">-</span>,
-    },
   ];
 
 
@@ -852,6 +829,20 @@ export default function AllRequestPage(
       onSelectAllRequests={onSelectAllRequests}
       onRestoreManualSelection={onRestoreManualSelection}
       onExportExcel={onExportExcel}
+      onExportCurrentPage={async () => {
+        if (!canExport || pageRows.length === 0) return;
+        try {
+          const first = pageRows[0];
+          const itemsByRequestId = await fetchExportItemsByRequestIds(context, [first.spId]);
+          await exportToExcel([{ ...first, items: itemsByRequestId[first.spId] || [] }]);
+        } catch (e: unknown) {
+          setError(`Excel export failed: ${e instanceof Error ? e.message : "Unknown error"}`);
+        }
+      }}
+      headerChecked={
+        sortedRows.length > 0 &&
+        sortedRows.every((r) => selectedIds.includes(String(r.id)))
+      }
       canExport={canExport}
       showDisabledExport={props.permissions?.viewExportAllReport === true}
       countIncreased={countIncreased}
