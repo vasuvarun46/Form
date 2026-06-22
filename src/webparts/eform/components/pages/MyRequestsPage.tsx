@@ -186,7 +186,6 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
   const [toast, setToast] = React.useState<null | { type: ToastType; message: string }>(null);
   const [pageIndex, setPageIndex] = React.useState(0);
   const [searchField, setSearchField] = React.useState<"TransactionID" | "RequesterName">("TransactionID");
-  const [isAllSelected, setIsAllSelected] = React.useState(false);
   // Storage keys — shared constants
   const STORAGE_KEY_APPROVED = "myreq_approved_count";
   const STORAGE_KEY_REJECTED = "myreq_rejected_count";
@@ -201,7 +200,6 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
 
   const handleToggleRow = (id: string | number): void => {
     const idStr = String(id);
-    setIsAllSelected(false);
     setSelectedIds((prev) => {
       const updated = prev.includes(idStr)
         ? prev.filter((x) => x !== idStr)
@@ -332,31 +330,22 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
     const ids = sortedRows.map((r) => String(r.id));
     setSelectedIds(ids);
     setManualSelectedIds(ids);
-    setIsAllSelected(true);
   };
 
   const restoreManualSelection = (): void => {
-    setIsAllSelected(false);
     setSelectedIds(manualSelectedIds);
   };
 
   const handleToggleAll = (): void => {
-    if (isAllSelected) {
-      setIsAllSelected(false);
+    const allIds = sortedRows.map((r) => String(r.id));
+    const everythingSelected =
+      allIds.length > 0 && allIds.every((id) => selectedIds.includes(id));
+    if (everythingSelected) {
       setSelectedIds([]);
       setManualSelectedIds([]);
-      return;
-    }
-    const pageIds = pageRows.map((r) => String(r.id));
-    const allSelectedOnPage = pageIds.every((id) => selectedIds.includes(id));
-    if (allSelectedOnPage) {
-      const updated = selectedIds.filter((id) => !pageIds.includes(id));
-      setSelectedIds(updated);
-      setManualSelectedIds(updated);
     } else {
-      const updated = [...selectedIds, ...pageIds.filter((id) => !selectedIds.includes(id))];
-      setSelectedIds(updated);
-      setManualSelectedIds(updated);
+      setSelectedIds(allIds);
+      setManualSelectedIds(allIds);
     }
   };
 
@@ -962,6 +951,12 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
                 }));
                 await exportToExcel(exportRows);
               }}
+              onExportFirst={async () => {
+                if (!canExport || pageRows.length === 0) return;
+                const first = pageRows[0];
+                const itemsByRequestId = await fetchExportItemsByRequestIds(context, [first.spId]);
+                await exportToExcel([{ ...first, items: itemsByRequestId[first.spId] || [] }]);
+              }}
               canExport={canExport}
               showDisabledExport={props.permissions.viewExportOwnReport && rows.length === 0 && !hasAppliedFilters}
             />
@@ -1087,6 +1082,10 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
                             selectedIds={selectedIds}
                             onToggleRow={handleToggleRow}
                             onToggleAll={handleToggleAll}
+                            headerChecked={
+                              sortedRows.length > 0 &&
+                              sortedRows.every((r) => selectedIds.includes(String(r.id)))
+                            }
                           />
                         </div>
 

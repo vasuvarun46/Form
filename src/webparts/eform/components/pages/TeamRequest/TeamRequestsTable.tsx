@@ -31,6 +31,7 @@ export default function TeamRequestsTable(props: {
   onToggleRow: (id: string | number) => void;
   onToggleAll: () => void;
   canExport: boolean;
+  headerChecked?: boolean;
 }): JSX.Element {
   const {
     columns,
@@ -69,6 +70,7 @@ export default function TeamRequestsTable(props: {
           selectedIds={props.selectedIds}
           onToggleRow={props.onToggleRow}
           onToggleAll={props.onToggleAll}
+          headerChecked={props.headerChecked}
         />
       </div>}
 

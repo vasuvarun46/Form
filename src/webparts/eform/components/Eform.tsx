@@ -40,16 +40,16 @@ const canAccessRoute = (
 };
 
 // ── Parse deep-link params once at module level ──
-// RequestId is mandatory. If TransactionId is also present, it is the source of
-// truth — we resolve the real spId from SharePoint by Title later.
+// Accepts requestId / RequestId (case-insensitive) so both the Power Automate
+// generated URL (?requestId=N) and any manually constructed links work.
 const _dlParams = (() => {
   try {
     const p = new URLSearchParams(window.location.search);
-    const rid = p.get("RequestId");
-    if (!rid) return undefined;                       // RequestId is mandatory
+    const rid = p.get("requestId") || p.get("RequestId");
+    if (!rid) return undefined;
     const n = parseInt(rid, 10);
     if (isNaN(n) || n <= 0) return undefined;
-    const tid = p.get("TransactionId") || undefined;  // optional
+    const tid = p.get("transactionId") || p.get("TransactionId") || undefined;
     return { requestId: n, transactionId: tid };
   } catch { /* ignore */ }
   return undefined;
@@ -141,6 +141,17 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
     const webUrl = context.pageContext.web.absoluteUrl;
     const myEmail = String(context.pageContext.user.email || "").toLowerCase().trim();
 
+    // Remove the deep-link query params from the address bar.
+    // Done here (in the effect) rather than in syncHash so the URL is clean
+    // before any user interaction, and replaceState means back won't restore them.
+    const _cleanDlUrl = (hash: string): void => {
+      const myClean = window.location.pathname + hash;
+      let topClean = myClean;
+      try { topClean = (window.top?.location?.pathname ?? window.location.pathname) + hash; } catch { /* cross-origin */ }
+      try { window.top?.history?.replaceState(null, "", topClean); } catch { /* cross-origin guard */ }
+      try { history.replaceState(null, "", myClean); } catch { /* ignore */ }
+    };
+
     // Fetch the record including ApprovalChainJSON and requester email for the access check
     const url =
       `${webUrl}/_api/web/lists/getbytitle('InventoryRequests')/items(${requestId})` +
@@ -162,7 +173,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
         // Validate TransactionId matches the record's Title (when provided)
         if (transactionId && item.Title !== transactionId) {
           setRoute("home");
-          try { history.replaceState(null, "", "#"); } catch { /* ignore */ }
+          _cleanDlUrl("#");
           return;
         }
 
@@ -186,19 +197,20 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
         } catch { /* malformed JSON — deny */ }
 
         if (!isRequester && !hasChainAccess) {
-          // User has no access to this record
           setDlAccessDenied(true);
           return;
         }
 
-        // Authorized — open the transaction detail via My Requests context
+        // Authorized — open the transaction detail, then clean the URL so the
+        // query param is gone before the user makes any further navigation.
         setSelectedSpId(item.Id);
         setExportSource("my");
         setRoute("exportPdf");
+        _cleanDlUrl("#");
       })
       .catch(() => {
         setRoute("home");
-        try { history.replaceState(null, "", "#"); } catch { /* ignore */ }
+        _cleanDlUrl("#");
       });
   }, [context]);
 
@@ -268,10 +280,13 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
 
   const syncHash = (r: Route): void => {
     const h = (r === "my" || r === "team" || r === "all" || r === "create") ? `#/${r}` : "#";
-    // Update the address-bar URL. In the SPFx workbench iframe, window.top holds
-    // the real browser URL; on a production SharePoint page both are the same.
-    try { window.top?.history?.replaceState(null, "", h); } catch { /* cross-origin guard */ }
-    try { history.replaceState(null, "", h); } catch { /* ignore */ }
+    // Build pathname+hash so any existing query params (e.g. ?requestId=N from deep-links)
+    // are stripped on every navigation, not just on initial deep-link load.
+    const myClean = window.location.pathname + h;
+    let topClean = myClean;
+    try { topClean = (window.top?.location?.pathname ?? window.location.pathname) + h; } catch { /* cross-origin */ }
+    try { window.top?.history?.replaceState(null, "", topClean); } catch { /* cross-origin guard */ }
+    try { history.replaceState(null, "", myClean); } catch { /* ignore */ }
   };
 
   const safeNavigate = (r: Route, state?: RouteState): void => {

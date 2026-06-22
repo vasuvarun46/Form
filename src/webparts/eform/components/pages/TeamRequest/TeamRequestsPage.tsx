@@ -142,7 +142,6 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
   const [pendingAction, setPendingAction] = React.useState<PendingAction>("Approve");
   const [actionComments, setActionComments] = React.useState<string>("");
   const [actionSubmitting, setActionSubmitting] = React.useState<boolean>(false);
-  const [isAllSelected, setIsAllSelected] = React.useState(false);
 
   const {
     loading,
@@ -222,7 +221,6 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
   ========================================================== */
   const handleToggleRow = (id: string | number): void => {
     const idStr = String(id);
-    setIsAllSelected(false);
     setSelectedIds((prev) => {
       const updated = prev.includes(idStr) ? prev.filter((x) => x !== idStr) : [...prev, idStr];
       setManualSelectedIds(updated);
@@ -231,24 +229,14 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
   };
 
   const handleToggleAll = (): void => {
-    if (isAllSelected) {
-      setIsAllSelected(false);
+    const allIds = sortedRows.map((r) => String(r.id));
+    const everythingSelected = allIds.length > 0 && allIds.every((id) => selectedIds.includes(id));
+    if (everythingSelected) {
       setSelectedIds([]);
       setManualSelectedIds([]);
-      return;
-    }
-    const pageIds = sortedRows
-      .slice(safePageIndex * pageSize, safePageIndex * pageSize + pageSize)
-      .map((r) => String(r.id));
-    const allSelectedOnPage = pageIds.every((id) => selectedIds.includes(id));
-    if (allSelectedOnPage) {
-      const updated = selectedIds.filter((id) => !pageIds.includes(id));
-      setSelectedIds(updated);
-      setManualSelectedIds(updated);
     } else {
-      const updated = [...selectedIds, ...pageIds.filter((id) => !selectedIds.includes(id))];
-      setSelectedIds(updated);
-      setManualSelectedIds(updated);
+      setSelectedIds(allIds);
+      setManualSelectedIds(allIds);
     }
   };
 
@@ -256,11 +244,9 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
     const ids = sortedRows.map((r) => String(r.id));
     setSelectedIds(ids);
     setManualSelectedIds(ids);
-    setIsAllSelected(true);
   };
 
   const restoreManualSelection = (): void => {
-    setIsAllSelected(false);
     setSelectedIds(manualSelectedIds);
   };
 
@@ -691,6 +677,14 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
                 const exportRows = data.map((r) => ({ ...r, items: itemsByRequestId[r.spId] || [] }));
                 await exportToExcel(exportRows);
               }}
+              onExportFirst={async () => {
+                if (!canExport) return;
+                const pageRows = sortedRows.slice(safePageIndex * pageSize, safePageIndex * pageSize + pageSize);
+                if (pageRows.length === 0) return;
+                const first = pageRows[0];
+                const itemsByRequestId = await fetchExportItemsByRequestIds(ctx, [first.spId]);
+                await exportToExcel([{ ...first, items: itemsByRequestId[first.spId] || [] }]);
+              }}
               canExport={canExport}
               showDisabledExport={props.permissions.viewExportTeamReport && rows.length === 0 && !hasAppliedFilters}
             />
@@ -790,6 +784,10 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
                       onToggleRow={handleToggleRow}
                       onToggleAll={handleToggleAll}
                       canExport={canExport}
+                      headerChecked={
+                        sortedRows.length > 0 &&
+                        sortedRows.every((r) => selectedIds.includes(String(r.id)))
+                      }
                     />
                   </div>
                 </>

@@ -4,8 +4,9 @@ import { useIsDesktop } from "../../hooks/useIsDesktop";
 type MyRequestHeaderProps = {
   onCreate: () => void;
   selectedCount: number;
-  manualSelectedCount: number;        // ✅ ADD: only manually checked rows
+  manualSelectedCount: number;
   onExportExcel: (mode: "all" | "selected") => Promise<void>;
+  onExportFirst: () => Promise<void>;
   onSelectAllRequests: () => void;
   onRestoreManualSelection: () => void;
   canExport: boolean;
@@ -18,15 +19,15 @@ export default function MyRequestHeader(
   const {
     onCreate,
     selectedCount,
-    manualSelectedCount,               // ✅ NEW
+    manualSelectedCount,
     onExportExcel,
+    onExportFirst,
     onSelectAllRequests,
     onRestoreManualSelection,
     canExport,
     showDisabledExport,
   } = props;
 
-  const isDisabled = selectedCount === 0;
   const isDesktop = useIsDesktop(900);
 
   const [open, setOpen] = React.useState(false);
@@ -35,7 +36,7 @@ export default function MyRequestHeader(
   const ref = React.useRef<HTMLDivElement | null>(null);
 
   const canShowExport = canExport || showDisabledExport === true;
-  const exportButtonDisabled = !canExport || isDisabled || isExporting;
+  const exportButtonDisabled = !canExport || isExporting;
 
   // ✅ Close when clicking outside
   React.useEffect(() => {
@@ -96,7 +97,12 @@ export default function MyRequestHeader(
                   type="button"
                   disabled={exportButtonDisabled}
                   onClick={() => {
-                    if (!exportButtonDisabled) {
+                    if (exportButtonDisabled) return;
+                    if (selectedCount === 0) {
+                      // Nothing selected → directly download the first visible record
+                      setIsExporting(true);
+                      onExportFirst().finally(() => setIsExporting(false));
+                    } else {
                       setOpen((prev) => !prev);
                     }
                   }}
