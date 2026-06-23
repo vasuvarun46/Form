@@ -250,26 +250,6 @@ async function fetchSPUserProfile(
   }
 }
 
-async function fetchEFormUserJobPosition(
-  context: WebPartContext,
-  email: string
-): Promise<string> {
-  try {
-    const siteUrl = context.pageContext.web.absoluteUrl;
-    const safeEmail = email.replace(/'/g, "''");
-    const url =
-      `${siteUrl}/_api/web/lists/getbytitle('EForm%20Users')/items` +
-      `?$select=Jobposition` +
-      `&$filter=Email eq '${safeEmail}'` +
-      `&$top=1`;
-    const res = await context.spHttpClient.get(url, SPHttpClient.configurations.v1);
-    if (!res.ok) return "";
-    const json = await res.json();
-    return cleanDisplayText(String(json?.value?.[0]?.Jobposition || ""));
-  } catch {
-    return "";
-  }
-}
 
 function parseMultipleApproverData(raw: unknown): ParsedMultipleApproverData | null {
   if (raw === null || raw === undefined) return null;
@@ -676,7 +656,6 @@ export default function ExportPDFPage({
   // Prefer Azure AD job title; fall back to SharePoint JobPosition field
   const resolvedRequestorPosition =
     cleanPositionText(requestorAadProfile?.jobTitle) ||
-    cleanPositionText(exportData?.jobPosition) ||
     "-";
   // Prefer Azure AD department; fall back to SharePoint Department lookup
   const resolvedRequestorDepartment =
@@ -912,13 +891,7 @@ export default function ExportPDFPage({
       for (const email of uniqueEmails) {
         try {
           const profile = await fetchSPUserProfile(context, email);
-          if (profile.jobTitle) {
-            newPositions[email] = profile.jobTitle;
-          } else {
-            // Fallback: query EForm Users list for actual Jobposition
-            const eformPos = await fetchEFormUserJobPosition(context, email);
-            if (eformPos) newPositions[email] = eformPos;
-          }
+          if (profile.jobTitle) newPositions[email] = profile.jobTitle;
         } catch {
           // silently skip
         }
@@ -1407,12 +1380,8 @@ export default function ExportPDFPage({
               cleanDisplayText(approver.approverEmail || "") ||
               "-";
 
-            // AAD job title takes priority; fall back to MultipleApproverData position field
             const aadPosition = cleanDisplayText(approverAadPositions[approverEmailKey] || "");
-            const displayPosition =
-              aadPosition ||
-              cleanDisplayText(approver.position) ||
-              "-";
+            const displayPosition = aadPosition || "-";
 
             return (
               <div key={`footer-approver-${approver.slot}`}>
