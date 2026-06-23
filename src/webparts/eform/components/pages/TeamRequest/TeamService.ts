@@ -908,7 +908,8 @@ export function useTeamRequestsLogic(
     async (requestId: number): Promise<RequestItemRow[]> => {
       const url =
         `${siteUrl}/_api/web/lists/getbytitle('InventoryRequestItems')/items` +
-        `?$select=Id,SKUCode,Quantity,UnitPrice,RequestIDId,RowStatus` +
+        `?$top=5000` +
+        `&$select=Id,SKUCode,Quantity,UnitPrice,RequestIDId,RowStatus` +
         `&$filter=RequestIDId eq ${requestId} and RowStatus eq 'Active'` +
         `&$orderby=LineNumber asc`;
       const json = await spGetJson(context, url);
