@@ -180,6 +180,23 @@ export async function buildApprovalChainFromLists(
 
 
 
+  // ── 3b. ROLE AUTHORITY HELPERS (name-based, not index-based) ────────────
+  // Manager = lowest authority (0), C2 = highest (3).
+  // This must not rely on the order SharePoint returns LOA fields.
+  const ROLE_AUTHORITY_ORDER: string[][] = [
+    ["MANAGER"],
+    ["EXECUTIVE", "EXECUTED"],
+    ["C1"],
+    ["C2"],
+  ];
+
+  const getRoleAuthorityLevel = (title: string): number => {
+    const norm = normalize(title);
+    return ROLE_AUTHORITY_ORDER.findIndex(aliases =>
+      aliases.some(a => norm === a || norm.startsWith(a) || norm.includes(a))
+    );
+  };
+
   // ── 4. FETCH REQUESTER row from EForm Users ──────────────────────────────
   const emailFieldNames = emailFields.map((f) => f.InternalName).join(",");
 
@@ -263,7 +280,30 @@ export async function buildApprovalChainFromLists(
       continue;
     }
 
-    const approverEmail = String(requester[emailColInternalName] || "").trim();
+    let approverEmail = String(requester[emailColInternalName] || "").trim();
+
+    // Fallback chain: if this role's email is empty, climb to the next
+    // higher-authority role using the fixed hierarchy (Manager→Executive→C1→C2).
+    // Must NOT rely on array index — SharePoint field order is not guaranteed.
+    if (!approverEmail) {
+      const currentAuthorityLevel = getRoleAuthorityLevel(flagField.Title);
+      const mapEntries = Array.from(emailFieldMap.entries());
+      for (let lvl = currentAuthorityLevel + 1; lvl < ROLE_AUTHORITY_ORDER.length; lvl++) {
+        const aliases = ROLE_AUTHORITY_ORDER[lvl];
+        for (let ei = 0; ei < mapEntries.length; ei++) {
+          const mapKey = mapEntries[ei][0];
+          const colInternalName = mapEntries[ei][1];
+          if (aliases.some(a => mapKey.includes(a))) {
+            const hEmail = String(requester[colInternalName] || "").trim();
+            if (hEmail) {
+              approverEmail = hEmail;
+              break;
+            }
+          }
+        }
+        if (approverEmail) break;
+      }
+    }
 
     if (isSingleApproval) {
       const emailKey = approverEmail.toUpperCase();
@@ -352,16 +392,13 @@ export async function buildApprovalChainFromLists(
 
   const stageEmails = new Set(stages.map(s => s.approverEmail.toUpperCase()));
 
-  // ✅ For SingleApprover: find the order index of the enabled flag
-  // approvalFlagFieldsLowToHigh is LOW → HIGH, so index 0 = lowest authority
-  // The enabled flag's index is the threshold: at or above = canApprove
-  const singleEnabledFlagInternalName = isSingleApproval
-    ? approvalFlagFields.find((f) => matchedLOA[f.InternalName] === true)?.InternalName
-    : undefined;
-
-  // In approvalFlagFieldsLowToHigh (reversed), find the threshold index
-  const singleEnabledOrderIndex = isSingleApproval && singleEnabledFlagInternalName
-    ? approvalFlagFieldsLowToHigh.findIndex((f) => f.InternalName === singleEnabledFlagInternalName)
+  // For SingleApprover: find the authority level of the one enabled LOA flag.
+  // Use role-name hierarchy — NOT array index — because SP field order is not guaranteed.
+  const singleEnabledAuthorityLevel = isSingleApproval
+    ? (() => {
+        const enabledFlag = approvalFlagFields.find(f => matchedLOA[f.InternalName] === true);
+        return enabledFlag ? getRoleAuthorityLevel(enabledFlag.Title) : -1;
+      })()
     : -1;
 
 
@@ -393,11 +430,12 @@ export async function buildApprovalChainFromLists(
     let canApproveRequest: boolean;
 
     if (isSingleApproval) {
-      // At or above the threshold index in LowToHigh array = higher/equal authority
-      // i >= singleEnabledOrderIndex means this role is at or above the enabled level
+      // A role can approve if its authority level is >= the LOA-enabled role's level
+      // and it has an email. Uses role-name hierarchy, not array index.
+      const thisAuthorityLevel = getRoleAuthorityLevel(flagField.Title);
       canApproveRequest =
-        singleEnabledOrderIndex >= 0 &&
-        i >= singleEnabledOrderIndex &&
+        singleEnabledAuthorityLevel >= 0 &&
+        thisAuthorityLevel >= singleEnabledAuthorityLevel &&
         !emailMissing;
     } else {
       // MultipleApprover: only if their email is explicitly in stages
@@ -1086,6 +1124,7 @@ export const getOrCreateTxnId = async (
   }
 
   // Allocate a new unique Transaction ID
+  // eslint-disable-next-line @typescript-eslint/no-use-before-define
   return allocateUniqueTxnId(context, requestId, asOf);
 };
 

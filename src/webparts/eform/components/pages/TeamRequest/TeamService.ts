@@ -572,6 +572,30 @@ export function useTeamRequestsLogic(
 
       const json = await spGetJson(context, url);
 
+      // Fallback: Manager → Executive/Executed → C1 → C2
+      const deriveCurrentApproverEmail = (
+        spEmail: string,
+        levels: AllApprovalLevel[]
+      ): string => {
+        if (spEmail) return spEmail;
+        const roleAliases: Array<[string[]]> = [
+          [["manager"]],
+          [["executive", "executed"]],
+          [["c1"]],
+          [["c2"]],
+        ];
+        const sorted = [...levels].sort((a, b) => a.order - b.order);
+        for (const [aliases] of roleAliases) {
+          const match = sorted.find(
+            (l) =>
+              aliases.some((a) => l.approvalRole.toLowerCase() === a) &&
+              !!l.approverEmail
+          );
+          if (match?.approverEmail) return match.approverEmail;
+        }
+        return "";
+      };
+
       const getActedApproverName = (
         raw: unknown,
         workflowStatus: string
@@ -623,9 +647,10 @@ export function useTeamRequestsLogic(
               ? reqNum
               : String(it?.Id || "");
 
-        const currentApproverEmail = String(it?.CurrentApproverEmail || "")
-          .trim()
-          .toLowerCase();
+        const currentApproverEmail = deriveCurrentApproverEmail(
+          String(it?.CurrentApproverEmail || "").trim().toLowerCase(),
+          allApprovalLevels
+        );
 
         const finalDecisionEmail = String(it?.FinalDecisionEmail || "")
           .trim()
@@ -883,7 +908,8 @@ export function useTeamRequestsLogic(
     async (requestId: number): Promise<RequestItemRow[]> => {
       const url =
         `${siteUrl}/_api/web/lists/getbytitle('InventoryRequestItems')/items` +
-        `?$select=Id,SKUCode,Quantity,UnitPrice,RequestIDId,RowStatus` +
+        `?$top=5000` +
+        `&$select=Id,SKUCode,Quantity,UnitPrice,RequestIDId,RowStatus` +
         `&$filter=RequestIDId eq ${requestId} and RowStatus eq 'Active'` +
         `&$orderby=LineNumber asc`;
       const json = await spGetJson(context, url);

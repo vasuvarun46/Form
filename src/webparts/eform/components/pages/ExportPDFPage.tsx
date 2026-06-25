@@ -158,7 +158,7 @@ function getStatusDisplay(status?: string): { label: string; className: string }
   const s = (status || "").toLowerCase().trim();
   if (s === "submitted") return { label: "ส่งแล้ว / SUBMITTED", className: "text-blue-600" };
   if (s === "approved") return { label: "อนุมัติ / APPROVED", className: "text-green-600" };
-  if (s === "rejected") return { label: "ไม่อนุมัติ / REJECTED", className: "text-red-600" };
+  if (s === "rejected") return { label: "ปฏิเสธ / REJECTED", className: "text-red-600" };
   if (s === "in approval" || s === "pending") return { label: "อยู่ระหว่างการอนุมัติ / IN APPROVAL", className: "text-amber-600" };
   if (s === "draft") return { label: "แบบร่าง / DRAFT", className: "text-gray-500" };
   return { label: status || "-", className: "text-gray-600" };
@@ -250,6 +250,7 @@ async function fetchSPUserProfile(
   }
 }
 
+
 function parseMultipleApproverData(raw: unknown): ParsedMultipleApproverData | null {
   if (raw === null || raw === undefined) return null;
 
@@ -334,7 +335,7 @@ function parseMultipleApproverData(raw: unknown): ParsedMultipleApproverData | n
 
       const resolvedPosition = cleanPositionText(
         String(stage.approverJobPosition ?? stage.Jobposition ?? stage.JobPosition ?? "")
-      ) || (matchedLevel ? cleanDisplayText(matchedLevel.approvalRole) : "");
+      );
 
       return {
         stage: Number.isFinite(stageValue) ? stageValue : 0,
@@ -655,7 +656,6 @@ export default function ExportPDFPage({
   // Prefer Azure AD job title; fall back to SharePoint JobPosition field
   const resolvedRequestorPosition =
     cleanPositionText(requestorAadProfile?.jobTitle) ||
-    cleanPositionText(exportData?.jobPosition) ||
     "-";
   // Prefer Azure AD department; fall back to SharePoint Department lookup
   const resolvedRequestorDepartment =
@@ -683,7 +683,7 @@ export default function ExportPDFPage({
         return [{
           slot: 1,
           name: cleanDisplayText(exportData?.approverNames || exportData?.approverName),
-          position: cleanDisplayText(actedStage.approverJobPosition || actedStage.approvalRole || ""),
+          position: cleanDisplayText(actedStage.approverJobPosition || ""),
           status: normalizeApprovalStatus(actedStage.action || actedStage.Status),
           date: formatDateDdMmYyyy(actedStage.date || actedStage.Date),
           reason: cleanDisplayText(actedStage.reason),
@@ -750,7 +750,7 @@ export default function ExportPDFPage({
       return {
         slot: slotNumber,
         name: cleanDisplayText(s.approverName),
-        position: cleanDisplayText(s.approverJobPosition || s.approvalRole || ""),
+        position: cleanDisplayText(s.approverJobPosition || ""),
         status: normalizeApprovalStatus(s.action || s.Status),
         date: formatDateDdMmYyyy(s.date || s.Date),
         reason: cleanDisplayText(s.reason),
@@ -893,7 +893,7 @@ export default function ExportPDFPage({
           const profile = await fetchSPUserProfile(context, email);
           if (profile.jobTitle) newPositions[email] = profile.jobTitle;
         } catch {
-          // Silently fall back to position stored in MultipleApproverData
+          // silently skip
         }
       }
 
@@ -1380,12 +1380,8 @@ export default function ExportPDFPage({
               cleanDisplayText(approver.approverEmail || "") ||
               "-";
 
-            // AAD job title takes priority; fall back to MultipleApproverData position field
             const aadPosition = cleanDisplayText(approverAadPositions[approverEmailKey] || "");
-            const displayPosition =
-              aadPosition ||
-              cleanDisplayText(approver.position) ||
-              "-";
+            const displayPosition = aadPosition || "-";
 
             return (
               <div key={`footer-approver-${approver.slot}`}>
@@ -1504,8 +1500,8 @@ export default function ExportPDFPage({
                   return (
                     <>
                       <div className="flex items-center gap-2">
-                        <span className="text-lg font-semibold text-gray-900">Status :</span>
-                        <span className={`text-lg font-semibold ${status.className}`}>{status.label}</span>
+                        <span className="text-lg font-bold text-gray-900">Status :</span>
+                        <span className={`text-lg font-bold ${status.className}`}>{status.label}</span>
                       </div>
                       <div className="mt-1 text-sm font-medium text-gray-500">
                         Transaction ID : {exportData?.Title || ""}
@@ -1524,7 +1520,7 @@ export default function ExportPDFPage({
                 <span className="font-medium text-gray-900">{exportData?.requester || " "}</span>
               </div>
               <div>
-                <span className="font-medium text-gray-500">ตำแหน่งงาน / Job Position :</span>{" "}
+                <span className="font-medium text-gray-500">ตำแหน่ง / Job Position :</span>{" "}
                 <span className="font-medium text-gray-900">{resolvedRequestorPosition}</span>
               </div>
               <div>
