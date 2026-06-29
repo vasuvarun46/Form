@@ -45,15 +45,26 @@ const canAccessRoute = (
 // fall back to window.location for local/workbench environments.
 const _dlParams = (() => {
   try {
+    // 1. Email deep-link: ?requestId=N&transactionId=T
     let search = window.location.search;
     try { search = window.top?.location?.search ?? search; } catch { /* cross-origin — use iframe URL */ }
     const p = new URLSearchParams(search);
     const rid = p.get("requestId") || p.get("RequestId");
-    if (!rid) return undefined;
-    const n = parseInt(rid, 10);
-    if (isNaN(n) || n <= 0) return undefined;
-    const tid = p.get("transactionId") || p.get("TransactionId") || undefined;
-    return { requestId: n, transactionId: tid };
+    if (rid) {
+      const n = parseInt(rid, 10);
+      if (!isNaN(n) && n > 0) {
+        const tid = p.get("transactionId") || p.get("TransactionId") || undefined;
+        return { requestId: n, transactionId: tid };
+      }
+    }
+    // 2. Refresh-restore: #/details/N written after successful deep-link navigation
+    let hash = window.location.hash;
+    try { hash = window.top?.location?.hash ?? hash; } catch { /* cross-origin */ }
+    const m = hash.match(/^#\/details\/(\d+)$/);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (!isNaN(n) && n > 0) return { requestId: n, transactionId: undefined };
+    }
   } catch { /* ignore */ }
   return undefined;
 })();
@@ -209,13 +220,13 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
           return;
         }
 
-        // Authorized — open the transaction detail, then clean the URL so the
-        // query param is gone before the user makes any further navigation.
+        // Authorized — navigate to details. Write #/details/N so that a
+        // browser refresh restores this same record instead of going home.
         setSelectedSpId(item.Id);
         setExportSource("my");
         setRoute("exportPdf");
         setDlValidating(false);
-        _cleanDlUrl("#");
+        _cleanDlUrl(`#/details/${item.Id}`);
       })
       .catch(() => {
         setRoute("home");
@@ -288,10 +299,9 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
     };
   }, [context]);
 
-  const syncHash = (r: Route): void => {
-    const h = (r === "my" || r === "team" || r === "all" || r === "create") ? `#/${r}` : "#";
-    // Build pathname+hash so any existing query params (e.g. ?requestId=N from deep-links)
-    // are stripped on every navigation, not just on initial deep-link load.
+  const syncHash = (r: Route, spId?: number): void => {
+    let h = (r === "my" || r === "team" || r === "all" || r === "create") ? `#/${r}` : "#";
+    if (r === "exportPdf" && spId) h = `#/details/${spId}`;
     const myClean = window.location.pathname + h;
     let topClean = myClean;
     try { topClean = (window.top?.location?.pathname ?? window.location.pathname) + h; } catch { /* cross-origin */ }
@@ -299,7 +309,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
     try { history.replaceState(null, "", myClean); } catch { /* ignore */ }
   };
 
-  const safeNavigate = (r: Route, state?: RouteState): void => {
+  const safeNavigate = (r: Route, state?: RouteState, spId?: number): void => {
     if (!canAccessRoute(permissions, r)) {
       setRoute("home");
       setRouteState(undefined);
@@ -308,7 +318,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
     }
     setRouteState(state);
     setRoute(r);
-    syncHash(r);
+    syncHash(r, spId);
   };
 
   const getApprovalApiKey = React.useCallback(async (): Promise<string> => {
@@ -535,7 +545,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
                 setSelectedSpId(spId);
                 setExportSource("my");
                 setExportActionInfo(undefined);
-                safeNavigate("exportPdf");
+                safeNavigate("exportPdf", undefined, spId);
               }}
               onDownloadPdf={(spId: number) => {
                 setQuickPdfRequest({ spId, source: "my" });
@@ -561,7 +571,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
                 setSelectedSpId(spId);
                 setExportSource("team");
                 setExportActionInfo(actionInfo);
-                safeNavigate("exportPdf");
+                safeNavigate("exportPdf", undefined, spId);
               }}
               onDownloadPdf={(spId: number) => {
                 setQuickPdfRequest({ spId, source: "team" });
@@ -583,7 +593,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
                 setSelectedSpId(spId);
                 setExportSource("all");
                 setExportActionInfo(undefined);
-                safeNavigate("exportPdf");
+                safeNavigate("exportPdf", undefined, spId);
               }}
               onDownloadPdf={(spId: number) => {
                 setQuickPdfRequest({ spId, source: "all" });
