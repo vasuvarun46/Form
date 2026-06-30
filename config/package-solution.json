@@ -3,7 +3,7 @@
   "solution": {
     "name": "eform-details-client-side-solution",
     "id": "65abe42b-e03c-4d56-a0f3-9fdb5402e01b",
-    "version": "1.0.1.6",
+    "version": "1.0.1.7",
     "includeClientSideAssets": true,
     "skipFeatureDeployment": true,
     "isDomainIsolated": false,
@@ -30,7 +30,7 @@
         "title": "eform-details Feature",
         "description": "The feature that activates elements of the eform-details solution.",
         "id": "e8bb35c8-3a81-4ce8-86fb-25fb36984233",
-        "version": "1.0.1.6"
+        "version": "1.0.1.7"
       }
     ]
   },

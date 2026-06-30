@@ -3,10 +3,8 @@ import BaseInnerHeader from "./BaseInnerHeader";
 
 type Props = {
   loading?: boolean;
-  selectedCount: number;
   manualSelectedCount: number;
   onExportExcel: (mode: "all" | "selected") => Promise<void>;
-  onExportCurrentPage: () => Promise<void>;
   onSelectAllRequests: () => void;
   onRestoreManualSelection: () => void;
   canExport: boolean;
@@ -16,10 +14,8 @@ type Props = {
 export default function AllRequestHeader(props: Props): JSX.Element {
   const {
     loading,
-    selectedCount,
     manualSelectedCount,
     onExportExcel,
-    onExportCurrentPage,
     onSelectAllRequests,
     onRestoreManualSelection,
     canExport,
@@ -76,13 +72,7 @@ export default function AllRequestHeader(props: Props): JSX.Element {
                 type="button"
                 disabled={exportButtonDisabled}
                 onClick={() => {
-                  if (exportButtonDisabled) return;
-                  if (selectedCount === 0) {
-                    setIsExporting(true);
-                    onExportCurrentPage().finally(() => setIsExporting(false));
-                  } else {
-                    setOpen((prev) => !prev);
-                  }
+                  if (!exportButtonDisabled) setOpen((prev) => !prev);
                 }}
                 className={[
                   "h-8 px-3 rounded-md text-[12px] font-medium transition",

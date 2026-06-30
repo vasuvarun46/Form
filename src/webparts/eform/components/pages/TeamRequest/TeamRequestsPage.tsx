@@ -661,7 +661,6 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
             )}
             <TeamRequestHeader
               loading={loading || (rows.length === 0 && !hasAppliedFilters)}
-              selectedCount={selectedIds.length}
               onSelectAllRequests={selectAllFilteredRows}
               manualSelectedCount={manualSelectedIds.length}
               onRestoreManualSelection={restoreManualSelection}
@@ -676,14 +675,6 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
                 const itemsByRequestId = await fetchExportItemsByRequestIds(ctx, data.map((r) => r.spId));
                 const exportRows = data.map((r) => ({ ...r, items: itemsByRequestId[r.spId] || [] }));
                 await exportToExcel(exportRows);
-              }}
-              onExportFirst={async () => {
-                if (!canExport) return;
-                const pageRows = sortedRows.slice(safePageIndex * pageSize, safePageIndex * pageSize + pageSize);
-                if (pageRows.length === 0) return;
-                const first = pageRows[0];
-                const itemsByRequestId = await fetchExportItemsByRequestIds(ctx, [first.spId]);
-                await exportToExcel([{ ...first, items: itemsByRequestId[first.spId] || [] }]);
               }}
               canExport={canExport}
               showDisabledExport={props.permissions.viewExportTeamReport && rows.length === 0 && !hasAppliedFilters}

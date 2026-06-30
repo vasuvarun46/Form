@@ -73,7 +73,6 @@ type Props = {
   onSelectAllRequests: () => void;
   onRestoreManualSelection: () => void;
   onExportExcel: (mode: "all" | "selected") => Promise<void>;
-  onExportCurrentPage: () => Promise<void>;
   headerChecked: boolean;
 
   onSearchWithField?: (args: { field: SearchFieldKey; text: string }) => void;
@@ -127,7 +126,6 @@ export default function AllRequestRender({
   onSelectAllRequests,
   onRestoreManualSelection,
   onExportExcel,
-  onExportCurrentPage,
   headerChecked,
   onSearchWithField,
   onClear,
@@ -179,11 +177,9 @@ export default function AllRequestRender({
           <div className="sticky top-0 z-20 bg-white shrink-0 border-b border-gray-200">
             <AllRequestHeader
               loading={true}
-              selectedCount={selectedIds.length}
               onSelectAllRequests={onSelectAllRequests}
               onRestoreManualSelection={onRestoreManualSelection}
               onExportExcel={onExportExcel}
-              onExportCurrentPage={onExportCurrentPage}
               canExport={canExport}
               showDisabledExport={showDisabledExport}
               manualSelectedCount={manualSelectedCount}
@@ -209,11 +205,9 @@ export default function AllRequestRender({
           <div className="sticky top-0 z-20 bg-white shrink-0 border-b border-gray-200">
             <AllRequestHeader
               loading={tableLoading || filteredRows.length === 0}
-              selectedCount={selectedIds.length}
               onSelectAllRequests={onSelectAllRequests}
               onRestoreManualSelection={onRestoreManualSelection}
               onExportExcel={onExportExcel}
-              onExportCurrentPage={onExportCurrentPage}
               canExport={canExport}
               manualSelectedCount={manualSelectedCount}
             />
