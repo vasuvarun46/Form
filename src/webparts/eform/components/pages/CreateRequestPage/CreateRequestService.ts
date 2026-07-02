@@ -229,18 +229,24 @@ export async function buildApprovalChainFromLists(
   const loaRows = loaJson.value || [];
 
   // ── 6. MATCH LOA ROW by amount ───────────────────────────────────────────
-  // ✅ FIX 1 & 2: dot notation for Min and Max
-  const matchedLOA = loaRows.find((row) => {
+  let matchedLOA = loaRows.find((row) => {
     const min = parseAmount(row.Min);
     const max = parseAmount(row.Max);
     return totalAmount >= min && totalAmount <= max;
   });
 
+  // Fallback for zero-amount requests (all items have price 0):
+  // use the lowest LOA tier (rows are ordered by Min asc).
+  if (!matchedLOA && loaRows.length > 0) {
+    matchedLOA = loaRows[0];
+  }
+
   if (!matchedLOA) return fallback("NO_LOA_MATCH");
+  const resolvedLOA = matchedLOA; // const — safe to use inside callbacks
 
   // ── 7. COUNT ENABLED CHECKBOXES ─────────────────────────────────────────
   const enabledFlags = approvalFlagFields.filter(
-    (f) => matchedLOA[f.InternalName] === true
+    (f) => resolvedLOA[f.InternalName] === true
   );
 
   if (!enabledFlags.length) return fallback("NO_APPROVER_FOUND");
@@ -264,7 +270,7 @@ export async function buildApprovalChainFromLists(
   const seenEmails = new Set<string>();
 
   for (const flagField of approvalFlagFieldsLowToHigh) {
-    if (matchedLOA[flagField.InternalName] !== true) continue;
+    if (resolvedLOA[flagField.InternalName] !== true) continue;
 
     const candidates = roleKeys(flagField.Title);
     let emailColInternalName: string | undefined;
@@ -396,7 +402,7 @@ export async function buildApprovalChainFromLists(
   // Use role-name hierarchy — NOT array index — because SP field order is not guaranteed.
   const singleEnabledAuthorityLevel = isSingleApproval
     ? (() => {
-        const enabledFlag = approvalFlagFields.find(f => matchedLOA[f.InternalName] === true);
+        const enabledFlag = approvalFlagFields.find(f => resolvedLOA[f.InternalName] === true);
         return enabledFlag ? getRoleAuthorityLevel(enabledFlag.Title) : -1;
       })()
     : -1;
@@ -407,7 +413,7 @@ export async function buildApprovalChainFromLists(
 
   for (let i = 0; i < approvalFlagFieldsLowToHigh.length; i++) {
     const flagField = approvalFlagFieldsLowToHigh[i];
-    const isEnabledByLOA = matchedLOA[flagField.InternalName] === true;
+    const isEnabledByLOA = resolvedLOA[flagField.InternalName] === true;
 
     const candidates = roleKeys(flagField.Title);
     let emailColInternalName: string | undefined;

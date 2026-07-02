@@ -462,11 +462,10 @@ export default function CreateRequestPage({
 
       const barcode = String(flow.Barcode || "").trim();
       const productCode = String(flow.ProductCode || "").trim();
-      const unitPrice = Number(flow.Original_sp || 0);
       const stock = Number(flow.Warehouse_SOH_Qty ?? 0);
 
       // ❌ Invalid product data
-      if (!barcode || !productCode || unitPrice <= 0) {
+      if (!barcode || !productCode) {
         setSkuSearchError(strings.InvalidProductData);
         return;
       }
@@ -529,11 +528,6 @@ export default function CreateRequestPage({
 
     if (!productCode) {
       setSubmitError("Flow returned no ProductCode.");
-      return;
-    }
-
-    if (unitPrice <= 0) {
-      setSubmitError("Flow returned invalid price.");
       return;
     }
 
