@@ -225,7 +225,6 @@ export default function CreateRequestRender(props: Props): JSX.Element {
     setManualQtyError,
     setManualPopupOpen,
     setManualProduct,
-    submitError,
     fileInputRef,
     removeConfirmOpen,
     confirmRemoveItem,
@@ -955,7 +954,6 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                         <div>ราคาป้ายต่อหน่วย</div>
                         <div>Tag Price per Unit</div>
                       </Th>
-                      <Th center><div>คงเหลือ</div><div>Available</div></Th>
                       <Th center><div>จำนวน</div><div>Quantity</div></Th>
                       <Th right>
                         <div>ราคาป้ายทั้งหมด</div>
@@ -984,7 +982,6 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                           </Td>
                           <Td>{it.size}</Td>
                           <Td right>{Number(it.unitPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Td>
-                          <Td center>{Number(it.maxStock ?? 0)}</Td>
                           <Td center>
                             <div className="origin-center">
                               <QtyStepper
@@ -1190,7 +1187,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                 fontWeight: 600, fontSize: 13, color: "#111827", backgroundColor: "#CAD6E6",
               }}
             >
-              {totalQty}
+              {totalQty.toLocaleString()}
             </div>
             {/* Total Tag Price value */}
             <div
@@ -1342,11 +1339,6 @@ export default function CreateRequestRender(props: Props): JSX.Element {
 
 
 
-        {submitError && (
-          <div className="mb-3 rounded-md bg-red-50 border border-red-200 px-4 py-2 text-[12px] text-[#E56D71]">
-            {submitError}
-          </div>
-        )}
 
         {removeConfirmOpen && (
           <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/35 px-4">
@@ -1691,28 +1683,29 @@ export default function CreateRequestRender(props: Props): JSX.Element {
         {/* Insufficient Stock Detected Popup */}
         {excelFailPopupOpen && (
           <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 px-4">
-            <div className="w-full max-w-[520px] rounded-xl bg-white shadow-xl border border-[#e7e7e7] overflow-hidden relative">
+            <div className="w-full max-w-[430px] rounded-2xl bg-white shadow-xl overflow-hidden relative">
               <button
                 type="button"
-                onClick={() => setExcelFailPopupOpen(false)}  // Close the popup
-                className="absolute top-3 right-3 text-gray-500 hover:text-gray-600"
+                onClick={() => setExcelFailPopupOpen(false)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-base leading-none"
               >
                 ✕
               </button>
-              <div className="px-6 py-6 text-center">
-                <div className="text-[16px] font-bold text-gray-900 mb-2">
+              <div className="px-10 pt-10 pb-8 text-center">
+                <div className="text-[18px] font-bold text-gray-900 mb-3">
                   Insufficient Stock Detected
                 </div>
-                <div className="text-[12px] text-gray-600 leading-relaxed">
-                  Some items currently have insufficient stock. The system will recheck quantities again at approval.
-                  <br />
-                  If any items remain unavailable, approvers and admin will be notified by email.
+                <div className="text-[13px] text-gray-600 leading-6 text-center">
+                  <p className="font-bold text-gray-900 mb-2">Some items currently have insufficient stock.</p>
+                  The system will recheck quantities again at approval.{" "}
+                  If any items remain unavailable, approver(s), requestor, and admin will be notified by email.{" "}
+                  You may create a new request for those items later.
                 </div>
-                <div className="mt-6 flex justify-center">
+                <div className="mt-7 flex justify-center">
                   <button
                     type="button"
                     onClick={onExcelFailOk}
-                    className="h-10 px-8 rounded-md bg-[#000000] text-white text-[12px] font-semibold hover:bg-[#222222]"
+                    className="h-11 w-[190px] rounded-xl bg-[#000000] text-white text-[13px] font-semibold hover:bg-[#222222]"
                   >
                     OK, Got it
                   </button>

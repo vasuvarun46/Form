@@ -1487,7 +1487,7 @@ export default function ExportPDFPage({
                 <img src={LogoPng} alt="E-FORM" crossOrigin="anonymous" className="h-14 w-auto object-contain" />
                 <div>
                   <p className="font-semibold text-gray-900 text-xl leading-tight">
-                    บริษัท กิติรัญ จำกัด / Kititan Company Limited
+                    บริษัท กิติธัญ จำกัด / Kititan Company Limited
                   </p>
                   <p className="font-medium text-sm text-gray-500">
                     แบบเบิกสินค้าคงเหลือเพื่อใช้ภายใน / Internal Usage Inventory Request Form
@@ -1532,7 +1532,7 @@ export default function ExportPDFPage({
                 <span className="font-medium text-gray-900">{exportData?.costCenter || " "}</span>
               </div>
               <div>
-                <span className="font-medium text-gray-500">วันที่ต้องการสินค้า / Expected Inventory Date :</span>{" "}
+                <span className="font-medium text-gray-500">วันที่ต้องการสินค้า / Expected Delivery Date :</span>{" "}
                 <span className="font-medium text-gray-900">{exportData?.expectedDeliveryDate || " "}</span>
               </div>
               <div className="col-span-2">

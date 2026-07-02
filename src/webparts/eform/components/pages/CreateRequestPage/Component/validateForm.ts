@@ -85,7 +85,6 @@ export default function validateForm(
 
   items.forEach((it, idx) => {
     const qty = Number(it.qty || 0);
-    const price = Number(it.unitPrice || 0);
 
     if (!String(it.sku || "").trim())
       ie[idx] = "SKU Code is missing.";
@@ -98,9 +97,6 @@ export default function validateForm(
 
     else if (qty > 999)
       ie[idx] = "Quantity must be between 1 and 999.";
-
-    else if (price <= 0)
-      ie[idx] = "Tag Price / Unit must be greater than 0.";
   });
 
   const hasItemErrors = Object.keys(ie).length > 0;
