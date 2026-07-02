@@ -39,11 +39,9 @@ const canAccessRoute = (
   return false;
 };
 
-// ── Parse deep-link params once at module level ──
-// SPFx runs inside an iframe — the email link query params (?requestId=N)
-// are on the top-level window URL, not the iframe URL. Try window.top first,
-// fall back to window.location for local/workbench environments.
-const _dlParams = (() => {
+// ── Parse deep-link params — tries window.top (same-origin SPFx iframe) ──
+// Returns parsed params or undefined. Safe to call multiple times.
+function _readDlParams(): { requestId: number; transactionId?: string } | undefined {
   try {
     // 1. Email deep-link: ?requestId=N&transactionId=T
     let search = window.location.search;
@@ -67,7 +65,9 @@ const _dlParams = (() => {
     }
   } catch { /* ignore */ }
   return undefined;
-})();
+}
+// Try once at module load — may be undefined if window.top is cross-origin at this point
+const _dlParams = _readDlParams();
 
 // ── Parse hash-based deep-link route (my / team / all / create) ──
 // SPFx workbench runs the web part inside a same-origin iframe, so
@@ -93,9 +93,11 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
   const [route, setRoute] = React.useState<Route>(
     _dlParams ? "home" : (_initialHashRoute || "home")
   );
-  // true while the deep-link SP fetch is in flight — keeps the whole component
-  // hidden so neither a blank screen nor the home screen flashes before navigation.
-  const [dlValidating, setDlValidating] = React.useState<boolean>(!!_dlParams);
+  // Start as true always — the post-mount retry effect resolves it immediately
+  // if no deep-link params are present, avoiding a blank screen when window.top
+  // was cross-origin at module-load time but becomes readable after mount.
+  const [dlValidating, setDlValidating] = React.useState<boolean>(true);
+  const _dlParamsRef = React.useRef(_dlParams);
   const [selectedSpId, setSelectedSpId] = React.useState<number | undefined>(undefined);
   const [dlAccessDenied, setDlAccessDenied] = React.useState(false);
   const [exportSource, setExportSource] = React.useState<ExportSource>("my");
@@ -146,6 +148,82 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
 
   const approvalApiKeyRef = React.useRef<string>("");
   const effectiveFlowUrl = runtimeFlowUrl || flowUrl;
+
+  // ── Post-mount deep-link param retry ─────────────────────────────────────
+  // window.top may be cross-origin at module-load time (SPFx iframe timing),
+  // causing _dlParams to be undefined even when the URL has ?requestId=N.
+  // After mount, window.top is readable — retry once and store in ref.
+  const _dlRetryDone = React.useRef(false);
+  React.useEffect(() => {
+    if (_dlRetryDone.current) return;
+    _dlRetryDone.current = true;
+    if (_dlParamsRef.current) {
+      // Already found at module load — validation effect will handle it
+      return;
+    }
+    const retried = _readDlParams();
+    if (retried) {
+      _dlParamsRef.current = retried;
+      // dlValidating stays true — the validation effect below will pick it up
+      // but it already ran with _dlParams=undefined. Trigger it manually here.
+      const { requestId, transactionId } = retried;
+      const webUrl = context.pageContext.web.absoluteUrl;
+      const myEmail = String(context.pageContext.user.email || "").toLowerCase().trim();
+      const _cleanDlUrl = (hash: string): void => {
+        const myClean = window.location.pathname + hash;
+        let topClean = myClean;
+        try { topClean = (window.top?.location?.pathname ?? window.location.pathname) + hash; } catch { /* cross-origin */ }
+        try { window.top?.history?.replaceState(null, "", topClean); } catch { /* cross-origin guard */ }
+        try { history.replaceState(null, "", myClean); } catch { /* ignore */ }
+      };
+      const url =
+        `${webUrl}/_api/web/lists/getbytitle('InventoryRequests')/items(${requestId})` +
+        `?$select=Id,Title,ApprovalChainJSON,Requester/EMail` +
+        `&$expand=Requester`;
+      context.spHttpClient
+        .get(url, SPHttpClient.configurations.v1)
+        .then((res) => {
+          if (!res.ok) throw new Error("Item not found");
+          return res.json();
+        })
+        .then((item: { Id: number; Title: string; ApprovalChainJSON?: string; Requester?: { EMail?: string } }) => {
+          if (transactionId && item.Title !== transactionId) {
+            setRoute("home");
+            setDlValidating(false);
+            _cleanDlUrl("#");
+            return;
+          }
+          const isRequester = String(item.Requester?.EMail || "").toLowerCase().trim() === myEmail;
+          let hasChainAccess = false;
+          try {
+            const chain = JSON.parse(String(item.ApprovalChainJSON || "{}")) as {
+              allApprovalLevels?: Array<{ approverEmail?: string; canViewRequest?: boolean }>;
+            };
+            hasChainAccess = (chain.allApprovalLevels || []).some(
+              (l) => String(l.approverEmail || "").toLowerCase().trim() === myEmail && l.canViewRequest === true
+            );
+          } catch { /* malformed JSON */ }
+          if (!isRequester && !hasChainAccess) {
+            setDlAccessDenied(true);
+            setDlValidating(false);
+            return;
+          }
+          setSelectedSpId(item.Id);
+          setExportSource(hasChainAccess ? "team" : "my");
+          setRoute("exportPdf");
+          setDlValidating(false);
+          _cleanDlUrl(`#/details/${item.Id}`);
+        })
+        .catch(() => {
+          setRoute("home");
+          setDlValidating(false);
+          _cleanDlUrl("#");
+        });
+    } else {
+      // No deep-link params found — clear the validating spinner and show normal UI
+      setDlValidating(false);
+    }
+  }, [context]);
 
   // ── Deep-link: validate record + enforce access control ──────────────────
   // Only the requestor, assigned approvers (canViewRequest=true in ApprovalChainJSON),
