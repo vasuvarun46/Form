@@ -178,7 +178,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
       };
       const url =
         `${webUrl}/_api/web/lists/getbytitle('InventoryRequests')/items(${requestId})` +
-        `?$select=Id,Title,ApprovalChainJSON,Requester/EMail` +
+        `?$select=Id,Title,WorkflowStatus,ApprovalChainJSON,Requester/EMail` +
         `&$expand=Requester`;
       context.spHttpClient
         .get(url, SPHttpClient.configurations.v1)
@@ -186,7 +186,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
           if (!res.ok) throw new Error("Item not found");
           return res.json();
         })
-        .then((item: { Id: number; Title: string; ApprovalChainJSON?: string; Requester?: { EMail?: string } }) => {
+        .then((item: { Id: number; Title: string; WorkflowStatus?: string; ApprovalChainJSON?: string; Requester?: { EMail?: string } }) => {
           if (transactionId && item.Title !== transactionId) {
             setRoute("home");
             setDlValidating(false);
@@ -195,10 +195,13 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
           }
           const isRequester = String(item.Requester?.EMail || "").toLowerCase().trim() === myEmail;
           let hasChainAccess = false;
+          let chain: {
+            allApprovalLevels?: Array<{ approverEmail?: string; canViewRequest?: boolean; canApproveRequest?: boolean }>;
+            hasMultipleApprovals?: boolean;
+            currentApproverEmail?: string;
+          } = {};
           try {
-            const chain = JSON.parse(String(item.ApprovalChainJSON || "{}")) as {
-              allApprovalLevels?: Array<{ approverEmail?: string; canViewRequest?: boolean }>;
-            };
+            chain = JSON.parse(String(item.ApprovalChainJSON || "{}"));
             hasChainAccess = (chain.allApprovalLevels || []).some(
               (l) => String(l.approverEmail || "").toLowerCase().trim() === myEmail && l.canViewRequest === true
             );
@@ -208,8 +211,41 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
             setDlValidating(false);
             return;
           }
+          let actionInfo: ExportActionInfo = { canAct: false, showReject: false };
+          if (hasChainAccess && !isRequester) {
+            const status = String(item.WorkflowStatus || "").trim().toLowerCase();
+            const isActionable = status === "submitted" || status === "in approval" || status === "in-approval";
+            if (isActionable) {
+              const levels = chain.allApprovalLevels || [];
+              const hasMultiple = !!chain.hasMultipleApprovals;
+              if (!hasMultiple) {
+                const canApprove = levels.some(
+                  (l) => String(l.approverEmail || "").toLowerCase().trim() === myEmail && l.canApproveRequest === true
+                );
+                if (canApprove) {
+                  actionInfo = { canAct: true, showReject: true };
+                } else {
+                  const isWaiting = levels.some(
+                    (l) => String(l.approverEmail || "").toLowerCase().trim() === myEmail && l.canApproveRequest === false
+                  );
+                  actionInfo = { canAct: false, showReject: false, isApproverWaiting: isWaiting };
+                }
+              } else {
+                const currentEmail = String(chain.currentApproverEmail || "").toLowerCase().trim();
+                if (currentEmail && currentEmail === myEmail) {
+                  actionInfo = { canAct: true, showReject: true };
+                } else {
+                  const isWaiting = levels.some(
+                    (l) => String(l.approverEmail || "").toLowerCase().trim() === myEmail
+                  );
+                  actionInfo = { canAct: false, showReject: false, isApproverWaiting: isWaiting };
+                }
+              }
+            }
+          }
           setSelectedSpId(item.Id);
           setExportSource(hasChainAccess ? "team" : "my");
+          setExportActionInfo(hasChainAccess ? actionInfo : undefined);
           setRoute("exportPdf");
           setDlValidating(false);
           _cleanDlUrl(`#/details/${item.Id}`);
@@ -247,10 +283,10 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
       try { history.replaceState(null, "", myClean); } catch { /* ignore */ }
     };
 
-    // Fetch the record including ApprovalChainJSON and requester email for the access check
+    // Fetch the record including ApprovalChainJSON, WorkflowStatus and requester email
     const url =
       `${webUrl}/_api/web/lists/getbytitle('InventoryRequests')/items(${requestId})` +
-      `?$select=Id,Title,ApprovalChainJSON,Requester/EMail` +
+      `?$select=Id,Title,WorkflowStatus,ApprovalChainJSON,Requester/EMail` +
       `&$expand=Requester`;
 
     context.spHttpClient
@@ -262,6 +298,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
       .then((item: {
         Id: number;
         Title: string;
+        WorkflowStatus?: string;
         ApprovalChainJSON?: string;
         Requester?: { EMail?: string };
       }) => {
@@ -274,17 +311,17 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
         }
 
         // ── Access control ────────────────────────────────────────────────────
-        // Rule 1: the requestor always has access
         const isRequester =
           String(item.Requester?.EMail || "").toLowerCase().trim() === myEmail;
 
-        // Rule 2: any user listed in allApprovalLevels with canViewRequest=true
-        // (covers: LOA approvers, Admin users, Finance users added in step 12b)
         let hasChainAccess = false;
+        let chain: {
+          allApprovalLevels?: Array<{ approverEmail?: string; canViewRequest?: boolean; canApproveRequest?: boolean }>;
+          hasMultipleApprovals?: boolean;
+          currentApproverEmail?: string;
+        } = {};
         try {
-          const chain = JSON.parse(String(item.ApprovalChainJSON || "{}")) as {
-            allApprovalLevels?: Array<{ approverEmail?: string; canViewRequest?: boolean }>;
-          };
+          chain = JSON.parse(String(item.ApprovalChainJSON || "{}"));
           hasChainAccess = (chain.allApprovalLevels || []).some(
             (l) =>
               String(l.approverEmail || "").toLowerCase().trim() === myEmail &&
@@ -298,12 +335,49 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
           return;
         }
 
-        // Authorized — navigate to details. Write #/details/N so that a
-        // browser refresh restores this same record instead of going home.
-        // Approvers (chain access but not the requester) land on Team view so
-        // approve/reject actions are available; requesters land on My view.
+        // ── Compute approve/reject button visibility ──────────────────────────
+        // Only approvers (hasChainAccess, not requestor) can ever see the buttons.
+        // Mirrors TeamService.getActionInfo logic exactly.
+        let actionInfo: ExportActionInfo = { canAct: false, showReject: false };
+        if (hasChainAccess && !isRequester) {
+          const status = String(item.WorkflowStatus || "").trim().toLowerCase();
+          const isActionable = status === "submitted" || status === "in approval" || status === "in-approval";
+
+          if (isActionable) {
+            const levels = chain.allApprovalLevels || [];
+            const hasMultiple = !!chain.hasMultipleApprovals;
+
+            if (!hasMultiple) {
+              // Single approver — show if canApproveRequest=true for this user
+              const canApprove = levels.some(
+                (l) => String(l.approverEmail || "").toLowerCase().trim() === myEmail && l.canApproveRequest === true
+              );
+              if (canApprove) {
+                actionInfo = { canAct: true, showReject: true };
+              } else {
+                const isWaiting = levels.some(
+                  (l) => String(l.approverEmail || "").toLowerCase().trim() === myEmail && l.canApproveRequest === false
+                );
+                actionInfo = { canAct: false, showReject: false, isApproverWaiting: isWaiting };
+              }
+            } else {
+              // Multi-level — only the current turn approver can act
+              const currentEmail = String(chain.currentApproverEmail || "").toLowerCase().trim();
+              if (currentEmail && currentEmail === myEmail) {
+                actionInfo = { canAct: true, showReject: true };
+              } else {
+                const isWaiting = levels.some(
+                  (l) => String(l.approverEmail || "").toLowerCase().trim() === myEmail
+                );
+                actionInfo = { canAct: false, showReject: false, isApproverWaiting: isWaiting };
+              }
+            }
+          }
+        }
+
         setSelectedSpId(item.Id);
         setExportSource(hasChainAccess ? "team" : "my");
+        setExportActionInfo(hasChainAccess ? actionInfo : undefined);
         setRoute("exportPdf");
         setDlValidating(false);
         _cleanDlUrl(`#/details/${item.Id}`);
