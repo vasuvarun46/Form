@@ -371,6 +371,7 @@ export function useTeamRequestsLogic(
 
   const [flowApiKey, setFlowApiKey] = React.useState<string>("");
   const [hasLoadedOnce, setHasLoadedOnce] = React.useState<boolean>(false);
+  const [hasApproverRole, setHasApproverRole] = React.useState<boolean | null>(null);
 
   const [pageIndex, setPageIndex] = React.useState<number>(0);
   const pageSize: number = 15;
@@ -417,6 +418,22 @@ export function useTeamRequestsLogic(
         c2Email: it?.C2Email ? String(it.C2Email).trim().toLowerCase() : undefined,
       };
     }, [context, siteUrl, currentUserEmailRaw, currentUserEmailEsc]);
+
+  /* =========================================================
+     CHECK APPROVER ROLE
+     Verifies the current user appears as ManagerEmail, ExecutiveEmail,
+     C1Email, or C2Email for at least one entry in EForm Users.
+  ========================================================= */
+
+  const checkApproverRole = React.useCallback(async (): Promise<boolean> => {
+    const url =
+      `${siteUrl}/_api/web/lists/getbytitle('EForm%20Users')/items` +
+      `?$select=Id` +
+      `&$filter=ManagerEmail eq '${currentUserEmailEsc}' or ExecutiveEmail eq '${currentUserEmailEsc}' or C1Email eq '${currentUserEmailEsc}' or C2Email eq '${currentUserEmailEsc}'` +
+      `&$top=1`;
+    const json = await spGetJson(context, url);
+    return Array.isArray(json?.value) && json.value.length > 0;
+  }, [context, siteUrl, currentUserEmailEsc]);
 
   /* =========================================================
      LOAD CONFIG
@@ -778,6 +795,19 @@ export function useTeamRequestsLogic(
         }
       }
 
+      // ── Role gate: only users who are a Manager / Executive / C1 / C2
+      //    for at least one employee may see Team Request records.
+      let isApprover = hasApproverRole;
+      if (isApprover === null) {
+        isApprover = await checkApproverRole();
+        setHasApproverRole(isApprover);
+      }
+
+      if (!isApprover) {
+        setRows([]);
+        return;
+      }
+
       if (
         statusOptions.length === 0 ||
         purposeOptions.length === 0 ||
@@ -800,11 +830,13 @@ export function useTeamRequestsLogic(
     profile,
     flowApiKey,
     hasLoadedOnce,
+    hasApproverRole,
     statusOptions.length,
     purposeOptions.length,
     costCenterOptions.length,
     loadEFormUserProfile,
     loadWorkflowConfig,
+    checkApproverRole,
     loadMasterOptions,
     loadStatusChoices,
     loadInventoryRequests,
@@ -994,9 +1026,9 @@ export function useTeamRequestsLogic(
                 differenceQty: liveStock - reqQty,    // negative = shortfall
               });
 
+            } else {
+              // ── QTY OK — sufficient stock, no entry needed ──────────────────
             }
-            // ── QTY OK ─────────────────────────────────────────────────────
-            // No mismatch entry needed — item is fully available
 
           } catch {
             // ── UNVERIFIABLE (API call failed) ──────────────────────────────
@@ -1030,10 +1062,26 @@ export function useTeamRequestsLogic(
               message: "Quantity must be between 1 and 999.",
             });
           }
+          // No WMS URL — cannot verify stock, no mismatch entry added.
         }
       }
 
-      const quantityShort = skuMismatches.length > 0;
+      // If no SKU had a shortage, send a single zero-row so Power Automate
+      // always receives at least one entry in skuMismatches.
+      if (skuMismatches.length === 0) {
+        skuMismatches.push({
+          itemId: 0,
+          sku: "0",
+          tagPricePerUnit: 0,
+          requestedQty: 0,
+          totalTagPrice: 0,
+          availableQty: 0,
+          actualTotalTagPrice: 0,
+          differenceQty: 0,
+        });
+      }
+
+      const quantityShort = true;
 
       return {
         ok: invalidItems.length === 0,
@@ -1457,6 +1505,7 @@ export function useTeamRequestsLogic(
 
     reload: loadAll,
     rows,
-    countIncreased
+    countIncreased,
+    hasApproverRole,
   };
 }

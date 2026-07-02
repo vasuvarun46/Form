@@ -176,6 +176,7 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
     reload,
     rows,
     countIncreased,
+    hasApproverRole,
   } = useTeamRequestsLogic(ctx, props.ApprovalFlowUrl, searchField, props.permissions, props.productFlowUrl);
 
   React.useEffect(() => {
@@ -674,7 +675,13 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
           {/* BODY */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden bg-[#f3f3f3] py-4 px-5 sm:px-5">
             <div className="space-y-6">
-              {rows.length === 0 && !hasAppliedFilters ? (
+              {hasApproverRole === false ? (
+                <RequestEmptyState
+                  title="No Access"
+                  description="You don't have permission to view team requests."
+                  showAction={false}
+                />
+              ) : rows.length === 0 && !hasAppliedFilters ? (
                 <RequestEmptyState
                   title="Empty team's requests"
                   description="There is no any submitted requests from the team yet"
