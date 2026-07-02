@@ -3,6 +3,7 @@ import { SPHttpClient, SPHttpClientResponse } from "@microsoft/sp-http";
 
 export interface ExportRequestRow {
   id: string;
+  spId?: number;
   status: string;
   requestor: string;
   approver?: string;
@@ -135,6 +136,9 @@ export async function fetchExportItemsByRequestIds(
 export async function exportToExcel(rows: ExportRequestRow[]): Promise<void> {
   if (!rows || rows.length === 0) return;
 
+  // Sort request rows by spId descending (newest first)
+  const sortedRows = [...rows].sort((a, b) => (b.spId || 0) - (a.spId || 0));
+
   const XLSX = await import(/* webpackChunkName: "xlsx" */ "xlsx");
 
   const headers: string[] = [
@@ -148,20 +152,16 @@ export async function exportToExcel(rows: ExportRequestRow[]): Promise<void> {
     "Submitted Date",
     "Approved Date",
     "Expected Delivery Date",
-    "Total Quantity",
-    "Total Tag Price",
     "SKU Code",
-    "Product Code",
-    "Color",
-    "Size",
-    "Tag Price Per Unit",
+    "Product Description",
     "Quantity",
-    "Total Tag Price",
+    "Tag Price per Unit",
+    "Tag Price Total",
   ];
 
   const data: (string | number)[][] = [headers];
 
-  for (const r of rows) {
+  for (const r of sortedRows) {
     const txnBase: (string | number)[] = [
       r.id,
       r.status,
@@ -173,8 +173,6 @@ export async function exportToExcel(rows: ExportRequestRow[]): Promise<void> {
       r.submitted || "",
       r.approvedDates || r.approved || "",
       r.expected || "",
-      Number(r.qty || 0),
-      Number(r.price || 0),
     ];
 
     const items = r.items && r.items.length > 0 ? r.items : null;
@@ -185,15 +183,13 @@ export async function exportToExcel(rows: ExportRequestRow[]): Promise<void> {
           ...txnBase,
           item.sku || "",
           item.productCode || "",
-          item.color || "",
-          item.size || "",
-          Number(item.unitPrice || 0),
           Number(item.qty || 0),
+          Number(item.unitPrice || 0),
           Number(item.lineTotal || 0),
         ]);
       }
     } else {
-      data.push([...txnBase, "", "", "", "", "", "", ""]);
+      data.push([...txnBase, "", "", "", "", ""]);
     }
   }
 
@@ -210,15 +206,11 @@ export async function exportToExcel(rows: ExportRequestRow[]): Promise<void> {
     { wch: 14 },  // Submitted Date
     { wch: 22 },  // Approved Date
     { wch: 20 },  // Expected Delivery Date
-    { wch: 14 },  // Total Quantity
-    { wch: 16 },  // Total Tag Price (request)
     { wch: 18 },  // SKU Code
-    { wch: 22 },  // Product Code
-    { wch: 14 },  // Color
-    { wch: 14 },  // Size
-    { wch: 18 },  // Tag Price Per Unit
+    { wch: 28 },  // Product Description
     { wch: 12 },  // Quantity
-    { wch: 18 },  // Total Tag Price (item)
+    { wch: 18 },  // Tag Price per Unit
+    { wch: 18 },  // Tag Price
   ];
 
   const workbook = XLSX.utils.book_new();
