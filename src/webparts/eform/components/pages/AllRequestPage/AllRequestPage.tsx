@@ -723,7 +723,7 @@ export default function AllRequestPage(
       header: "Total<br/>Quantity",
       thClassName: "w-[5%] text-left",
       tdClassName: "w-[5%] whitespace-nowrap text-left",
-      render: (r: Row) => r.qty,
+      render: (r: Row) => r.qty.toLocaleString(),
     },
     {
       key: "price",

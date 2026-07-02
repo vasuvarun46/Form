@@ -972,6 +972,31 @@ export function useTeamRequestsLogic(
       const invalidItems: ApprovalInvalidItem[] = [];
       const skuMismatches: SkuMismatch[] = [];
 
+      // If the entire request has zero total tag price, skip WMS checks
+      // and send a single zero-row to Power Automate.
+      const requestTotalTagPrice = items.reduce((sum, it) => {
+        return sum + (Number(it.Quantity || 0) * Number(it.UnitPrice || 0));
+      }, 0);
+
+      if (requestTotalTagPrice === 0) {
+        skuMismatches.push({
+          itemId: 0,
+          sku: "0",
+          tagPricePerUnit: 0,
+          requestedQty: 0,
+          totalTagPrice: 0,
+          availableQty: 0,
+          actualTotalTagPrice: 0,
+          differenceQty: 0,
+        });
+        return {
+          ok: true,
+          invalidItems: [],
+          skuMismatches,
+          quantityShort: true,
+        };
+      }
+
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
         const reqQty = Number(it.Quantity || 0);

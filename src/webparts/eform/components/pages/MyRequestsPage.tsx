@@ -776,7 +776,7 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
       header: "Total<br/>Quantity",
       thClassName: "w-[5%] text-left",
       tdClassName: "w-[5%] whitespace-nowrap text-left",
-      render: (r: Row) => r.status === "Pending" ? "" : r.qty,
+      render: (r: Row) => r.status === "Pending" ? "" : r.qty.toLocaleString(),
     },
     {
       key: "price",

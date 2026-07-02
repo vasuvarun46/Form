@@ -393,7 +393,7 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
       header: "Total<br/>Quantity",
       thClassName: "w-[4%] text-left",
       tdClassName: "w-[4%] whitespace-nowrap text-left",
-      render: (r: Row) => r.qty
+      render: (r: Row) => r.qty.toLocaleString()
     },
     {
       key: "price",

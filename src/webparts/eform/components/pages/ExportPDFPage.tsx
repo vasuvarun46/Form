@@ -1309,7 +1309,7 @@ export default function ExportPDFPage({
               <td className={isDesktopTable ? "px-3 py-3 text-right align-top" : "px-1 sm:px-2 py-2 text-right align-top"}>
                 {r.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </td>
-              <td className={isDesktopTable ? "px-3 py-3 text-right align-top" : "px-1 sm:px-2 py-2 text-right align-top"}>{r.quantity}</td>
+              <td className={isDesktopTable ? "px-3 py-3 text-right align-top" : "px-1 sm:px-2 py-2 text-right align-top"}>{r.quantity.toLocaleString()}</td>
               <td className={isDesktopTable ? "px-3 py-3 text-right align-top" : "px-1 sm:px-2 py-2 text-right align-top"}>
                 {r.lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </td>
@@ -1320,7 +1320,7 @@ export default function ExportPDFPage({
               <td colSpan={6} className="px-3 py-3 text-center font-semibold text-gray-900 bg-[#BCC8D6]">
                 ยอดรวมทั้งหมด / Grand Total
               </td>
-              <td className="px-3 py-3 text-right font-bold text-gray-900 bg-[#CAD6E6]">{totalQty}</td>
+              <td className="px-3 py-3 text-right font-bold text-gray-900 bg-[#CAD6E6]">{totalQty.toLocaleString()}</td>
               <td className="px-3 py-3 text-right font-semibold text-gray-900 bg-[#E0EEFF]">
                 {totalPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </td>

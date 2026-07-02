@@ -1705,7 +1705,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                   <button
                     type="button"
                     onClick={onExcelFailOk}
-                    className="h-11 w-[190px] rounded-xl bg-[#000000] text-white text-[13px] font-semibold hover:bg-[#222222]"
+                    className="h-11 w-[190px] rounded-lg bg-[#000000] text-white text-[13px] font-semibold hover:bg-[#222222]"
                   >
                     OK, Got it
                   </button>
