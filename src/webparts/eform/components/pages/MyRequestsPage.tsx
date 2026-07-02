@@ -283,10 +283,6 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
       }
     }
 
-    const statusOrder: Record<string, number> = { pending: 0, draft: 1, submitted: 2, "in approval": 3, approved: 4, rejected: 5 };
-
-    const getStatusPriority = (s: string): number => statusOrder[s.trim().toLowerCase()] ?? 2;
-    data.sort((a, b) => getStatusPriority(a.status) - getStatusPriority(b.status));
     return data;
 
   }, [
@@ -300,10 +296,23 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
     searchField,
   ]);
 
-  // ✅ CHANGED: sortedRows uses isSorted — sorts non-draft rows by spId asc when toggled
-  const sortedRows: Row[] = isSorted
-    ? [...filteredRows].reverse()
-    : filteredRows;
+  const sortedRows: Row[] = React.useMemo(() => {
+    const isPending = (r: Row): boolean => r.status.trim().toLowerCase() === "pending";
+    const isDraft = (r: Row): boolean => r.status.trim().toLowerCase() === "draft";
+
+    if (isSorted) {
+      // Sort clicked: all rows sorted by transactionId descending (Pending/Draft go to bottom as their id is "-" or a draft number)
+      return [...filteredRows].sort((a, b) => String(b.id).localeCompare(String(a.id)));
+    }
+
+    // Default: Pending first, Draft second, rest sorted by transactionId descending
+    const pending = filteredRows.filter(isPending);
+    const drafts = filteredRows.filter(isDraft);
+    const rest = filteredRows.filter(r => !isPending(r) && !isDraft(r));
+    const sortedRest = [...rest].sort((a, b) => String(b.id).localeCompare(String(a.id)));
+
+    return [...pending, ...drafts, ...sortedRest];
+  }, [filteredRows, isSorted]);
 
   React.useEffect(() => {
     setPageIndex(0);
@@ -1040,7 +1049,7 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
                       />
                       {/* ✅ CHANGED: onClick uses setIsSorted toggle */}
                       <button
-                        onClick={() => setSortState((prev) => prev === 0 ? 1 : 0)}
+                        onClick={() => { setSortState((prev) => prev === 0 ? 1 : 0); setPageIndex(0); }}
                         className="inline-flex h-7 items-center gap-1.5 rounded-md border border-gray-200 bg-gray-100 px-2.5 text-[12px] font-medium text-gray-800 transition-colors duration-200 hover:bg-gray-200"
                       >
                         <svg

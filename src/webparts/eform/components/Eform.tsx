@@ -222,8 +222,10 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
 
         // Authorized — navigate to details. Write #/details/N so that a
         // browser refresh restores this same record instead of going home.
+        // Approvers (chain access but not the requester) land on Team view so
+        // approve/reject actions are available; requesters land on My view.
         setSelectedSpId(item.Id);
-        setExportSource("my");
+        setExportSource(hasChainAccess ? "team" : "my");
         setRoute("exportPdf");
         setDlValidating(false);
         _cleanDlUrl(`#/details/${item.Id}`);

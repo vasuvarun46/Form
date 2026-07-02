@@ -26,6 +26,9 @@ export default function MyRequestHeader(
 
   const isDesktop = useIsDesktop(900);
 
+  // Set to true to re-enable the dropdown popup
+  const SHOW_EXPORT_POPUP = false;
+
   const [open, setOpen] = React.useState(false);
   const [isExporting, setIsExporting] = React.useState(false);
   const [mode, setMode] = React.useState<"all" | "selected">("all");
@@ -34,7 +37,6 @@ export default function MyRequestHeader(
   const canShowExport = canExport || showDisabledExport === true;
   const exportButtonDisabled = !canExport || isExporting;
 
-  // ✅ Close when clicking outside
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent): void => {
       if (ref.current && !ref.current.contains(event.target as Node)) {
@@ -45,27 +47,19 @@ export default function MyRequestHeader(
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ✅ FIX: When dropdown opens, set correct default mode
-  // Use manualSelectedCount (not selectedCount) to decide
   React.useEffect(() => {
     if (!open) return;
-
     if (manualSelectedCount > 0) {
-      // User has manually checked rows → show "selected" mode
       setMode("selected");
       onRestoreManualSelection();
     } else {
-      // No manual selection → default to "all"
       setMode("all");
       onSelectAllRequests();
     }
-  }, [open]); // ✅ only run when dropdown opens/closes
+  }, [open]);
 
-  // ✅ Close dropdown if export permission is revoked
   React.useEffect(() => {
-    if (!canExport && open) {
-      setOpen(false);
-    }
+    if (!canExport && open) setOpen(false);
   }, [canExport, open]);
 
   return (
@@ -86,14 +80,31 @@ export default function MyRequestHeader(
           {/* RIGHT */}
           <div className={isDesktop ? "flex items-center gap-3" : "flex w-full items-center gap-2"}>
 
-            {/* EXPORT DROPDOWN */}
+            {/* EXPORT */}
             {canShowExport && (
               <div className="relative" ref={ref}>
                 <button
                   type="button"
                   disabled={exportButtonDisabled}
-                  onClick={() => {
-                    if (!exportButtonDisabled) setOpen((prev) => !prev);
+                  onClick={async () => {
+                    if (exportButtonDisabled) return;
+                    if (SHOW_EXPORT_POPUP) {
+                      setOpen((prev) => !prev);
+                    } else {
+                      const hasSelection = manualSelectedCount > 0;
+                      setIsExporting(true);
+                      try {
+                        if (hasSelection) {
+                          onRestoreManualSelection();
+                          await onExportExcel("selected");
+                        } else {
+                          onSelectAllRequests();
+                          await onExportExcel("all");
+                        }
+                      } finally {
+                        setIsExporting(false);
+                      }
+                    }
                   }}
                   className={[
                     isDesktop
@@ -104,39 +115,38 @@ export default function MyRequestHeader(
                       : "bg-[#E8E8E8] text-gray-700 hover:bg-[#E8E8E8]",
                   ].join(" ")}
                 >
-                  Export
+                  {isExporting ? "Exporting..." : "Export"}
                 </button>
 
-                {open && (
+                {/* Popup — hidden while SHOW_EXPORT_POPUP is false */}
+                {SHOW_EXPORT_POPUP && open && (
                   <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-4 space-y-3">
                     <div className="text-sm font-semibold text-gray-700">
                       Export request for Excel
                     </div>
 
-                    {/* ✅ All requests radio */}
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                       <input
                         type="radio"
                         checked={mode === "all"}
                         onChange={() => {
                           setMode("all");
-                          onSelectAllRequests(); // select all rows in table
+                          onSelectAllRequests();
                         }}
                       />
                       All requests
                     </label>
 
-                    {/* ✅ Selected radio — always shows manualSelectedCount */}
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                       <input
                         type="radio"
                         checked={mode === "selected"}
                         onChange={() => {
                           setMode("selected");
-                          onRestoreManualSelection(); // restore manually checked rows
+                          onRestoreManualSelection();
                         }}
                       />
-                      Selected: {manualSelectedCount} requests  {/* ✅ FIXED */}
+                      Selected: {manualSelectedCount} requests
                     </label>
 
                     <button
@@ -167,7 +177,6 @@ export default function MyRequestHeader(
                 isDesktop
                   ? "h-8 px-4 rounded-md bg-[#000000] text-white text-[12px] font-semibold hover:bg-[#3B3B3B]"
                   : "h-9 px-4 rounded-md bg-[#000000] text-white text-[12px] font-semibold hover:bg-[#3B3B3B]"
-
               }
             >
               Create request

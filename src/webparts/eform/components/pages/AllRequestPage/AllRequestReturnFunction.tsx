@@ -110,6 +110,7 @@ export default function AllRequestRender({
   searchDraft,
   setSearchDraft,
   onSearch,
+  onSortToggle,
   pageRows,
   filteredRows,
   columns,
@@ -263,6 +264,22 @@ export default function AllRequestRender({
                     onSearchWithField={onSearchWithField}
                     onClear={onClear}
                   />
+                  <button
+                    onClick={onSortToggle}
+                    className="inline-flex h-7 items-center gap-1.5 rounded-md border border-gray-200 bg-gray-100 px-2.5 text-[12px] font-medium text-gray-800 transition-colors duration-200 hover:bg-gray-200"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-3.5 w-3.5 text-gray-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 7l4-4 4 4M16 17l-4 4-4-4" />
+                    </svg>
+                    Sort
+                  </button>
                 </div>
 
                 {/* Error */}

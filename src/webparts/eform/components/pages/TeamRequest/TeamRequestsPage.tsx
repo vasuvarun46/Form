@@ -191,20 +191,10 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
      SORT
   ========================================================== */
   const sortedRows = React.useMemo((): Row[] => {
-    const key = (r: Row): string => String(r.status || "").trim().toLowerCase();
-    const isSubmitted = (r: Row): boolean => key(r) === "submitted";
-    const isInApproval = (r: Row): boolean => key(r) === "in approval" || key(r) === "in-approval";
-    const isApproved = (r: Row): boolean => key(r) === "approved";
-    const isRejected = (r: Row): boolean => key(r) === "rejected";
-
-    const defaultOrder: Row[] = [
-      ...filteredRows.filter(isSubmitted),
-      ...filteredRows.filter(isInApproval),
-      ...filteredRows.filter(isApproved),
-      ...filteredRows.filter(isRejected),
-      ...filteredRows.filter(r => !isSubmitted(r) && !isInApproval(r) && !isApproved(r) && !isRejected(r)),
-    ];
-    return sortState === 1 ? [...defaultOrder].reverse() : defaultOrder;
+    if (sortState === 1) {
+      return [...filteredRows].sort((a, b) => a.spId - b.spId);
+    }
+    return filteredRows;
   }, [filteredRows, sortState]);
 
 
@@ -742,11 +732,11 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
                       />
                       <button
                         onClick={() => { setSortState((prev) => (prev === 0 ? 1 : 0)); goFirst(); }}
-                        className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-[12px] font-medium transition-colors duration-200 ${sortState === 1 ? "border-[#2172DA] bg-[#2172DA] text-white hover:bg-[#1a5dbf]" : "border-gray-200 bg-gray-100 text-gray-800 hover:bg-gray-200"}`}
+                        className="inline-flex h-7 items-center gap-1.5 rounded-md border border-gray-200 bg-gray-100 px-2.5 text-[12px] font-medium text-gray-800 transition-colors duration-200 hover:bg-gray-200"
                       >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
-                          className={`h-3.5 w-3.5 ${sortState === 1 ? "text-white" : "text-gray-500"}`}
+                          className="h-3.5 w-3.5 text-gray-500"
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"

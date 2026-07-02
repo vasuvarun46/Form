@@ -208,19 +208,10 @@ export default function AllRequestPage(
   }, [rows, statusFilter, purposeFilter, costCenterFilter, expectedFrom, expectedTo, searchText]);
 
   const sortedRows: Row[] = React.useMemo(() => {
-    const key = (r: Row): string => String(r.status || "").trim().toLowerCase();
-    const isSubmitted = (r: Row): boolean => key(r) === "submitted";
-    const isInApproval = (r: Row): boolean => key(r) === "in approval" || key(r) === "in-approval";
-    const isApproved = (r: Row): boolean => key(r) === "approved";
-    const isRejected = (r: Row): boolean => key(r) === "rejected";
-    const defaultOrder: Row[] = [
-      ...filteredRows.filter(isSubmitted),
-      ...filteredRows.filter(isInApproval),
-      ...filteredRows.filter(isApproved),
-      ...filteredRows.filter(isRejected),
-      ...filteredRows.filter(r => !isSubmitted(r) && !isInApproval(r) && !isApproved(r) && !isRejected(r)),
-    ];
-    return sortState === 1 ? [...defaultOrder].reverse() : defaultOrder;
+    if (sortState === 1) {
+      return [...filteredRows].sort((a, b) => a.spId - b.spId);
+    }
+    return filteredRows;
   }, [filteredRows, sortState]);
   const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
 
