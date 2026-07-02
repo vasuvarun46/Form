@@ -178,7 +178,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
       };
       const url =
         `${webUrl}/_api/web/lists/getbytitle('InventoryRequests')/items(${requestId})` +
-        `?$select=Id,Title,WorkflowStatus,ApprovalChainJSON,Requester/EMail` +
+        `?$select=Id,Title,WorkflowStatus,CurrentApproverEmail,ApprovalChainJSON,Requester/EMail` +
         `&$expand=Requester`;
       context.spHttpClient
         .get(url, SPHttpClient.configurations.v1)
@@ -186,7 +186,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
           if (!res.ok) throw new Error("Item not found");
           return res.json();
         })
-        .then((item: { Id: number; Title: string; WorkflowStatus?: string; ApprovalChainJSON?: string; Requester?: { EMail?: string } }) => {
+        .then((item: { Id: number; Title: string; WorkflowStatus?: string; CurrentApproverEmail?: string; ApprovalChainJSON?: string; Requester?: { EMail?: string } }) => {
           if (transactionId && item.Title !== transactionId) {
             setRoute("home");
             setDlValidating(false);
@@ -198,7 +198,6 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
           let chain: {
             allApprovalLevels?: Array<{ approverEmail?: string; canViewRequest?: boolean; canApproveRequest?: boolean }>;
             hasMultipleApprovals?: boolean;
-            currentApproverEmail?: string;
           } = {};
           try {
             chain = JSON.parse(String(item.ApprovalChainJSON || "{}"));
@@ -231,7 +230,8 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
                   actionInfo = { canAct: false, showReject: false, isApproverWaiting: isWaiting };
                 }
               } else {
-                const currentEmail = String(chain.currentApproverEmail || "").toLowerCase().trim();
+                // Multi-level — use SharePoint CurrentApproverEmail column (updated by workflow when C1 approves)
+                const currentEmail = String(item.CurrentApproverEmail || "").trim().toLowerCase();
                 if (currentEmail && currentEmail === myEmail) {
                   actionInfo = { canAct: true, showReject: true };
                 } else {
@@ -286,7 +286,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
     // Fetch the record including ApprovalChainJSON, WorkflowStatus and requester email
     const url =
       `${webUrl}/_api/web/lists/getbytitle('InventoryRequests')/items(${requestId})` +
-      `?$select=Id,Title,WorkflowStatus,ApprovalChainJSON,Requester/EMail` +
+      `?$select=Id,Title,WorkflowStatus,CurrentApproverEmail,ApprovalChainJSON,Requester/EMail` +
       `&$expand=Requester`;
 
     context.spHttpClient
@@ -299,6 +299,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
         Id: number;
         Title: string;
         WorkflowStatus?: string;
+        CurrentApproverEmail?: string;
         ApprovalChainJSON?: string;
         Requester?: { EMail?: string };
       }) => {
@@ -361,8 +362,8 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
                 actionInfo = { canAct: false, showReject: false, isApproverWaiting: isWaiting };
               }
             } else {
-              // Multi-level — only the current turn approver can act
-              const currentEmail = String(chain.currentApproverEmail || "").toLowerCase().trim();
+              // Multi-level — use SharePoint CurrentApproverEmail column (updated by workflow)
+              const currentEmail = String(item.CurrentApproverEmail || "").trim().toLowerCase();
               if (currentEmail && currentEmail === myEmail) {
                 actionInfo = { canAct: true, showReject: true };
               } else {
