@@ -180,6 +180,13 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
   } = useTeamRequestsLogic(ctx, props.ApprovalFlowUrl, searchField, props.permissions, props.productFlowUrl);
 
   React.useEffect(() => {
+    if (hasApproverRole !== null) {
+      props.onApproverRoleResolved?.(hasApproverRole);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasApproverRole]);
+
+  React.useEffect(() => {
     if (!toast) return;
     setActionModalOpen(false);
     setPendingRow(null);

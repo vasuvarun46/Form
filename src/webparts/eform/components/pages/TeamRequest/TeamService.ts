@@ -113,6 +113,7 @@ export interface TeamRequestsPageProps {
   permissions: SecurityPermissions;
   routeState?: RouteState;
   onRouteStateConsumed?: () => void;
+  onApproverRoleResolved?: (hasRole: boolean) => void;
 }
 
 export type FlowAction = "Approve" | "Reject";

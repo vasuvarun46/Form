@@ -36,7 +36,7 @@ export default function TeamRequestsTable(props: {
   const {
     columns,
     pageRows,
-    //filteredRows,
+    filteredRows,
     loading,
     error,
     //pageSize,
@@ -74,7 +74,7 @@ export default function TeamRequestsTable(props: {
         />
       </div>}
 
-      {!loading && <div className="px-4 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-[12px] text-gray-600 border-t border-[#eeeeee] bg-[#fafafa]">
+      {!loading && filteredRows.length > 0 && <div className="px-4 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-[12px] text-gray-600 border-t border-[#eeeeee] bg-[#fafafa]">
         <div className="flex flex-wrap items-center gap-2">
 
           <button

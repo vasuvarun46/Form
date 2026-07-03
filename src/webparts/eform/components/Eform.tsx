@@ -106,6 +106,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
   const [draftId, setDraftId] = React.useState<number | undefined>(undefined);
   const [routeState, setRouteState] = React.useState<RouteState>(undefined);
   const [runtimeFlowUrl, setRuntimeFlowUrl] = React.useState<string | undefined>(undefined);
+  const [teamNavVisible, setTeamNavVisible] = React.useState<boolean | null>(null);
   const [permissionsReady, setPermissionsReady] = React.useState(false);
   const [securityError, setSecurityError] = React.useState(false);
 
@@ -394,8 +395,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
     // placeholder — handle runtimeFlowUrl changes if needed
   }, [runtimeFlowUrl]);
 
-  // ── Check FinanceAdmin from EForm Users ───────────────────────────────────
-  // Only controls viewAll — no other permission logic needed
+  // ── Check FinanceAdmin + approver role from EForm Users on mount ─────────
   React.useEffect(() => {
     let cancelled = false;
 
@@ -405,40 +405,47 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
         const userEmail = context.pageContext.user.email;
         const safeEmail = userEmail.replace(/'/g, "''");
 
-        const userUrl =
+        const financeUrl =
           `${webUrl}/_api/web/lists/getbytitle('EForm%20Users')/items` +
-          `?$top=1` +
-          `&$select=FinanceAdmin` +
-          `&$filter=Email eq '${safeEmail}'`;
+          `?$top=1&$select=FinanceAdmin&$filter=Email eq '${safeEmail}'`;
 
-        const res = await context.spHttpClient.get(
-          userUrl,
-          SPHttpClient.configurations.v1
-        );
+        const approverUrl =
+          `${webUrl}/_api/web/lists/getbytitle('EForm%20Users')/items` +
+          `?$select=Id` +
+          `&$filter=ManagerEmail eq '${safeEmail}' or ExecutiveEmail eq '${safeEmail}' or C1Email eq '${safeEmail}' or C2Email eq '${safeEmail}'` +
+          `&$top=1`;
 
-        if (!res.ok) {
-          if (!cancelled) setPermissionsReady(true);
-          return;
-        }
+        const [financeRes, approverRes] = await Promise.all([
+          context.spHttpClient.get(financeUrl, SPHttpClient.configurations.v1),
+          context.spHttpClient.get(approverUrl, SPHttpClient.configurations.v1),
+        ]);
 
-        const json = await res.json() as {
-          value: { FinanceAdmin?: string }[]
-        };
+        if (cancelled) return;
 
-        const user = json.value?.[0];
-        const financeAdmin = String(user?.FinanceAdmin || "").trim().toUpperCase();
-        const hasFullAccess = financeAdmin === "ADMIN" || financeAdmin === "FINANCE";
-
-        if (!cancelled) {
-          setPermissions((prev) => ({
-            ...prev,
-            viewAll: hasFullAccess,
-            approveAll: hasFullAccess,
-            exportAllReport: hasFullAccess,
-            viewExportAllReport: hasFullAccess,
-          }));
+        if (!financeRes.ok) {
           setPermissionsReady(true);
+        } else {
+          const json = await financeRes.json() as { value: { FinanceAdmin?: string }[] };
+          const financeAdmin = String(json.value?.[0]?.FinanceAdmin || "").trim().toUpperCase();
+          const hasFullAccess = financeAdmin === "ADMIN" || financeAdmin === "FINANCE";
+          if (!cancelled) {
+            setPermissions((prev) => ({
+              ...prev,
+              viewAll: hasFullAccess,
+              approveAll: hasFullAccess,
+              exportAllReport: hasFullAccess,
+              viewExportAllReport: hasFullAccess,
+            }));
+            setPermissionsReady(true);
+          }
         }
+
+        if (approverRes.ok && !cancelled) {
+          const approverJson = await approverRes.json() as { value: unknown[] };
+          const isApprover = Array.isArray(approverJson.value) && approverJson.value.length > 0;
+          if (!cancelled) setTeamNavVisible(isApprover);
+        }
+
       } catch (err) {
         console.error("Security error:", err);
         if (!cancelled) setSecurityError(true);
@@ -733,6 +740,12 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
               }}
               ApprovalFlowUrl={ApprovalFlowUrl}
               productFlowUrl={effectiveFlowUrl}
+              onApproverRoleResolved={(hasRole) => {
+                if (!hasRole) {
+                  setTeamNavVisible(false);
+                  safeNavigate(permissions.viewOwn ? "my" : "home");
+                }
+              }}
             />
           </>
         );
@@ -828,6 +841,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
           roleReady={true}
           setRuntimeFlowUrl={setRuntimeFlowUrl}
           permissions={permissions}
+          hideTeamRoute={teamNavVisible !== true}
         >
           {renderPage()}
           {quickPdfRequest && (

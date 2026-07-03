@@ -12,17 +12,17 @@ interface Props {
   activeRoute: Route;
   onNavigate: (r: Route) => void;
   onGoForm: () => void;
-  context: WebPartContext;         // ✅ add
+  context: WebPartContext;
   roleReady: boolean;
   exportSource?: Route;
   setRuntimeFlowUrl?: (url: string) => void;
   permissions: SecurityPermissions;
-  // ✅ add (optional)
+  hideTeamRoute?: boolean;
 }
 
 
 export default function AppShell({
-  children, activeRoute, onNavigate, onGoForm, context, exportSource, setRuntimeFlowUrl, permissions,
+  children, activeRoute, onNavigate, onGoForm, context, exportSource, setRuntimeFlowUrl, permissions, hideTeamRoute,
 }: Props): JSX.Element {
   const isDesktop = useIsDesktop(1285);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
@@ -79,9 +79,9 @@ export default function AppShell({
               onNavigate={navTo}
               collapsed={sidebarCollapsed}
               onToggleCollapse={() => setSidebarCollapsed((p) => !p)}
-
               exportSource={exportSource}
               permissions={permissions}
+              hideTeamRoute={hideTeamRoute}
             />
 
           </aside>
@@ -129,6 +129,7 @@ export default function AppShell({
                 isDrawer
                 permissions={permissions}
                 exportSource={exportSource}
+                hideTeamRoute={hideTeamRoute}
               />
 
 

@@ -11,6 +11,7 @@ interface SidebarProps {
   onToggleCollapse?: () => void;
   exportSource?: Route;
   permissions?: SecurityPermissions;
+  hideTeamRoute?: boolean;
 }
 
 type LocationItem = {
@@ -66,6 +67,7 @@ export default function Sidebar({
   onToggleCollapse,
   exportSource,
   permissions,
+  hideTeamRoute = false,
 }: SidebarProps): JSX.Element {
   const [locationExpanded, setLocationExpanded] = React.useState<boolean>(false);
 
@@ -235,7 +237,7 @@ export default function Sidebar({
         >
           <div className="space-y-1">
             {permissions?.viewOwn && <Item route="my" label="My requests" forceActive={isMySectionActive} />}
-            {permissions?.viewTeam && <Item route="team" label="Team's requests" forceActive={isTeamSectionActive} />}
+            {permissions?.viewTeam && !hideTeamRoute && <Item route="team" label="Team's requests" forceActive={isTeamSectionActive} />}
             {permissions?.viewAll && <Item route="all" label="All requests" forceActive={isAllSectionActive} />}
           </div>
         </nav>
