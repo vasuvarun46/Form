@@ -980,21 +980,11 @@ export function useTeamRequestsLogic(
       }, 0);
 
       if (requestTotalTagPrice === 0) {
-        skuMismatches.push({
-          itemId: 0,
-          sku: "0",
-          tagPricePerUnit: 0,
-          requestedQty: 0,
-          totalTagPrice: 0,
-          availableQty: 0,
-          actualTotalTagPrice: 0,
-          differenceQty: 0,
-        });
         return {
           ok: true,
           invalidItems: [],
-          skuMismatches,
-          quantityShort: true,
+          skuMismatches: [],
+          quantityShort: false,
         };
       }
 
@@ -1092,22 +1082,7 @@ export function useTeamRequestsLogic(
         }
       }
 
-      // If no SKU had a shortage, send a single zero-row so Power Automate
-      // always receives at least one entry in skuMismatches.
-      if (skuMismatches.length === 0) {
-        skuMismatches.push({
-          itemId: 0,
-          sku: "0",
-          tagPricePerUnit: 0,
-          requestedQty: 0,
-          totalTagPrice: 0,
-          availableQty: 0,
-          actualTotalTagPrice: 0,
-          differenceQty: 0,
-        });
-      }
-
-      const quantityShort = true;
+      const quantityShort = skuMismatches.length > 0;
 
       return {
         ok: invalidItems.length === 0,

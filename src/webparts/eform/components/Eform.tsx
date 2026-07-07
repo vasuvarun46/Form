@@ -41,7 +41,7 @@ const canAccessRoute = (
 
 // ── Parse deep-link params — tries window.top (same-origin SPFx iframe) ──
 // Returns parsed params or undefined. Safe to call multiple times.
-function _readDlParams(): { requestId: number; transactionId?: string } | undefined {
+function _readDlParams(): { requestId: number; transactionId?: string; fromHash?: boolean } | undefined {
   try {
     // 1. Email deep-link: ?requestId=N&transactionId=T
     let search = window.location.search;
@@ -61,7 +61,7 @@ function _readDlParams(): { requestId: number; transactionId?: string } | undefi
     const m = hash.match(/^#\/details\/(\d+)$/);
     if (m) {
       const n = parseInt(m[1], 10);
-      if (!isNaN(n) && n > 0) return { requestId: n, transactionId: undefined };
+      if (!isNaN(n) && n > 0) return { requestId: n, transactionId: undefined, fromHash: true };
     }
   } catch { /* ignore */ }
   return undefined;
@@ -244,12 +244,37 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
               }
             }
           }
-          setSelectedSpId(item.Id);
-          setExportSource(hasChainAccess ? "team" : "my");
-          setExportActionInfo(hasChainAccess ? actionInfo : undefined);
-          setRoute("exportPdf");
-          setDlValidating(false);
-          _cleanDlUrl(`#/details/${item.Id}`);
+          if (!transactionId && !retried.fromHash) {
+            // ── Type 1: ?RequestId=N only (query param, not hash) → open draft in Create Request page ──
+            const isDraft = ["draft", "pending"].includes(
+              String(item.WorkflowStatus || "").trim().toLowerCase()
+            );
+            if (!isRequester) {
+              setDlAccessDenied(true);
+              setDlValidating(false);
+              return;
+            }
+            if (isDraft) {
+              setDraftId(item.Id);
+              setRoute("create");
+              setDlValidating(false);
+              _cleanDlUrl(`?RequestId=${item.Id}`);
+            } else {
+              setSelectedSpId(item.Id);
+              setExportSource("my");
+              setRoute("exportPdf");
+              setDlValidating(false);
+              _cleanDlUrl(`#/details/${item.Id}`);
+            }
+          } else {
+            // ── Type 2 or hash refresh: open in detail view (exportPdf) ──
+            setSelectedSpId(item.Id);
+            setExportSource(hasChainAccess ? "team" : "my");
+            setExportActionInfo(hasChainAccess ? actionInfo : undefined);
+            setRoute("exportPdf");
+            setDlValidating(false);
+            _cleanDlUrl(`#/details/${item.Id}`);
+          }
         })
         .catch(() => {
           setRoute("home");
@@ -377,12 +402,37 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
           }
         }
 
-        setSelectedSpId(item.Id);
-        setExportSource(hasChainAccess ? "team" : "my");
-        setExportActionInfo(hasChainAccess ? actionInfo : undefined);
-        setRoute("exportPdf");
-        setDlValidating(false);
-        _cleanDlUrl(`#/details/${item.Id}`);
+        if (!transactionId && !_dlParams?.fromHash) {
+          // ── Type 1: ?RequestId=N only (query param, not hash) → open draft in Create Request page ──
+          const isDraft = ["draft", "pending"].includes(
+            String(item.WorkflowStatus || "").trim().toLowerCase()
+          );
+          if (!isRequester) {
+            setDlAccessDenied(true);
+            setDlValidating(false);
+            return;
+          }
+          if (isDraft) {
+            setDraftId(item.Id);
+            setRoute("create");
+            setDlValidating(false);
+            _cleanDlUrl(`?RequestId=${item.Id}`);
+          } else {
+            setSelectedSpId(item.Id);
+            setExportSource("my");
+            setRoute("exportPdf");
+            setDlValidating(false);
+            _cleanDlUrl(`#/details/${item.Id}`);
+          }
+        } else {
+          // ── Type 2 or hash refresh: open in detail view (exportPdf) ──
+          setSelectedSpId(item.Id);
+          setExportSource(hasChainAccess ? "team" : "my");
+          setExportActionInfo(hasChainAccess ? actionInfo : undefined);
+          setRoute("exportPdf");
+          setDlValidating(false);
+          _cleanDlUrl(`#/details/${item.Id}`);
+        }
       })
       .catch(() => {
         setRoute("home");

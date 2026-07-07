@@ -623,8 +623,8 @@ export default function AllRequestPage(
     searchText.trim().length > 0;
 
   const isError = !loadingPage && !!error;
-  const isBaseEmpty = !loadingPage && !error && rows.length === 0 && !hasFiltersApplied;
-  const hasAnyData = !loadingPage && !error && (rows.length > 0 || hasFiltersApplied);
+  const isBaseEmpty = !loadingPage && !tableLoading && !error && rows.length === 0 && !hasFiltersApplied;
+  const hasAnyData = !loadingPage && !error && (rows.length > 0 || hasFiltersApplied || tableLoading);
 
 
   const columns = [
