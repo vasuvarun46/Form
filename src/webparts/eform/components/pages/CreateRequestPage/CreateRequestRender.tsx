@@ -363,7 +363,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
         <CreateRequestHeader
           onDiscard={() => setDiscardConfirmOpen(true)}
           onSaveDraft={onSaveDraft}
-          draftDisabled={draftDisabled}
+          draftDisabled={draftDisabled || hasInvalidManualQty}
           submitDisabled={items.length === 0 || isSubmitting || hasInvalidManualQty}
           hideSaveDraft={inventoryMode === "excel"}
           onSubmit={() => setSubmitConfirmOpen(true)}
@@ -968,9 +968,9 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                       const rowErr: string | undefined = itemErrors[idx];
                       return (
                         // AFTER
-                        <tr key={`${it.sku}-${idx}`} className={inventoryMode === "manual" && rowErr ? "bg-red-50" : ""}>
+                        <tr key={`${it.sku}-${idx}`} className="">
 
-                          <Td>{it.no}</Td>
+                          <Td>{it.no}.</Td>
                           <Td>
                             <span className="block truncate" title={it.sku}>{it.sku}</span>
                           </Td>
@@ -1012,27 +1012,13 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                                     openRemoveConfirm(idx, it.sku);
                                   }
                                 }}
-                                className={[
-                                  "h-8 sm:h-9 px-3 sm:px-4 whitespace-nowrap rounded-md text-[11px] sm:text-[12px] font-semibold transition-all duration-200",
-                                  rowErr
-                                    ? "!border !border-[#ff6b6b] !bg-white !text-[#ff3b3b]"
-                                    : "!border !border-[#DA2128] !bg-[#FBE9EA] !text-[#DA2128] hover:!bg-[#DA2128] hover:!text-white hover:!border-[#DA2128]",
-                                ].join(" ")}
+                                className="h-8 sm:h-9 px-3 sm:px-4 whitespace-nowrap rounded-md text-[11px] sm:text-[12px] font-semibold transition-all duration-200 !border !border-[#DA2128] !bg-[#FBE9EA] !text-[#DA2128] hover:!bg-[#DA2128] hover:!text-white hover:!border-[#DA2128]"
                               >
-                                {rowErr ? (
-                                  "Remove"
-                                ) : (
-                                  <span className="inline-flex items-center gap-1">
-                                    <Icon iconName="Delete" className="text-[11px] leading-none" />
-                                    <span>Remove</span>
-                                  </span>
-                                )}
+                                <span className="inline-flex items-center gap-1">
+                                  <Icon iconName="Delete" className="text-[11px] leading-none" />
+                                  <span>Remove</span>
+                                </span>
                               </button>
-                              {rowErr && (
-                                <div className="hidden mt-1 text-[10px] text-[#E56D71] whitespace-nowrap">
-                                  {rowErr}
-                                </div>
-                              )}
                             </Td>
                           )}
                         </tr>
@@ -1126,11 +1112,11 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                   <tbody className="divide-y divide-[#eeeeee] bg-white">
                     {items.map((it, idx) => {
                       const rowTotal: number = Number(it.qty) * Number(it.unitPrice);
-                      const rowErr: string | undefined = itemErrors[idx];
+                    //  const rowErr: string | undefined = itemErrors[idx];
 
                       return (
-                        <tr key={`${it.sku}-${idx}`} className={rowErr ? "bg-red-50" : ""}>
-                          <Td>{it.no}</Td>
+                        <tr key={`${it.sku}-${idx}`} className="">
+                          <Td>{it.no}.</Td>
                           <Td>
                             <span className="block truncate" title={it.sku}>{it.sku}</span>
                           </Td>

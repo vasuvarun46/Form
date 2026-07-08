@@ -1468,6 +1468,15 @@ React.useEffect(() => {
       }
 
       const chain = await buildApprovalChainFromLists(context, totalAmount);
+
+      if (chain.stageCount === 0) {
+        setCustomErrorMessage(
+          "Unable to determine an approver for this request. Please check the LOA configuration or contact your administrator."
+        );
+        setCustomErrorOpen(true);
+        return;
+      }
+
       const requesterUserId: number = await getCurrentUserId(context);
       const nowIso: string = new Date().toISOString();
       const firstApproverEmail = chain.firstStageApproverEmails[0] || "";

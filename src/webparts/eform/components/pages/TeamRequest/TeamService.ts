@@ -37,6 +37,7 @@ export interface Row {
 
   status: string;
   requestor: string;
+  requesterEmail: string;
   approver: string;
   approverNames: string; // ✅ NEW: ApproverNames column value
 
@@ -645,6 +646,7 @@ export function useTeamRequestsLogic(
         const hasMultipleApprovals = it?.HasMultipleApprovals === true;
         const workflowStatus = String(it?.WorkflowStatus || "");
 
+
         const reqNum =
           it?.RequestNumber !== null && it?.RequestNumber !== undefined
             ? String(it.RequestNumber)
@@ -683,6 +685,7 @@ export function useTeamRequestsLogic(
 
           status: workflowStatus,
           requestor: String(it?.Requester?.Title || ""),
+          requesterEmail: String(it?.Requester?.EMail || "").trim().toLowerCase(),
           approver:
             getActedApproverName(it?.MultipleApproverData, workflowStatus) ??
             String(it?.CurrentApprover?.Title || ""),
@@ -731,6 +734,9 @@ export function useTeamRequestsLogic(
           key === statusFilterKey("Rejected");
 
         if (!isLifecycleVisible) return false;
+
+        // Never show records created by the login user in Team Requests
+        if (row.requesterEmail && row.requesterEmail === loginEmail) return false;
 
         if (row.currentApproverEmail && row.currentApproverEmail === loginEmail)
           return true;
@@ -973,24 +979,42 @@ export function useTeamRequestsLogic(
       const invalidItems: ApprovalInvalidItem[] = [];
       const skuMismatches: SkuMismatch[] = [];
 
-      // If the entire request has zero total tag price, skip WMS checks
-      // and send a single zero-row to Power Automate.
       const requestTotalTagPrice = items.reduce((sum, it) => {
         return sum + (Number(it.Quantity || 0) * Number(it.UnitPrice || 0));
       }, 0);
 
+      // Pre-scan: items with qty=0 are always a shortage (no quantity was specified)
+      for (const it of items) {
+        const reqQty = Number(it.Quantity || 0);
+        if (reqQty === 0) {
+          skuMismatches.push({
+            itemId: Number(it.Id || 0),
+            sku: String(it.SKUCode || "-").trim() || "-",
+            tagPricePerUnit: Number(it.UnitPrice || 0),
+            requestedQty: 0,
+            totalTagPrice: 0,
+            availableQty: 0,
+            actualTotalTagPrice: 0,
+            differenceQty: 0,
+          });
+        }
+      }
+
+      // If total tag price is still 0 after accounting for zero-qty items, skip WMS checks
       if (requestTotalTagPrice === 0) {
+        const quantityShort = skuMismatches.length > 0;
         return {
           ok: true,
           invalidItems: [],
-          skuMismatches: [],
-          quantityShort: false,
+          skuMismatches,
+          quantityShort,
         };
       }
 
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
         const reqQty = Number(it.Quantity || 0);
+        if (reqQty === 0) continue; // already captured above
         const unitPrice = Number(it.UnitPrice || 0);       // tagPricePerUnit
         const sku = String(it.SKUCode || "-").trim() || "-";
         const itemId = Number(it.Id || 0);
@@ -1318,7 +1342,95 @@ export function useTeamRequestsLogic(
       const msg = toUserMessage(resp?.message, ok ? "Success" : "Failed");
       const newStatus = resp?.newStatus ? String(resp.newStatus) : undefined;
 
-      // ── UPDATE LOCAL ROW STATE on success ──────────────────────────────
+      // ── INTERMEDIATE MULTI-STAGE APPROVAL ─────────────────────────────
+      // When A1 approves but there are still more stages (e.g. C1 approves,
+      // C2 still needs to), Power Automate does not reliably set
+      // WorkflowStatus → "In Approval" or flip CurrentApproverEmail to the
+      // next approver. The frontend does it directly so A2 sees the record
+      // immediately with the correct status and can act on it.
+      if (ok && action === "Approve" && row.hasMultipleApprovals) {
+        const loginEmail = String(currentUserEmailRaw || "").trim().toLowerCase();
+
+        const approveableLevels = row.allApprovalLevels
+          .filter((l) => l.canApproveRequest)
+          .sort((a, b) => a.order - b.order);
+
+        const currentLevelIdx = approveableLevels.findIndex(
+          (l) => l.approverEmail === loginEmail
+        );
+
+        const isIntermediateApproval =
+          currentLevelIdx >= 0 &&
+          currentLevelIdx < approveableLevels.length - 1;
+
+        if (isIntermediateApproval) {
+          const nextLevel = approveableLevels[currentLevelIdx + 1];
+          const nextStage = row.workflowStage + 1;
+
+          // Resolve next approver's SharePoint user ID (non-blocking on error)
+          let nextApproverId: number | undefined;
+          try {
+            const ensureUrl =
+              `${siteUrl}/_api/web/ensureUser('${nextLevel.approverEmail.replace(/'/g, "''")}')`;
+            const ensureRes = await context.spHttpClient.post(
+              ensureUrl,
+              SPHttpClient.configurations.v1,
+              {
+                headers: { "Content-Type": "application/json;odata=verbose" },
+                body: JSON.stringify({}),
+              }
+            );
+            if (ensureRes.ok) {
+              const ensureJson = (await ensureRes.json()) as { Id?: number };
+              nextApproverId = ensureJson.Id;
+            }
+          } catch { /* non-blocking */ }
+
+          // Write the intermediate state to SharePoint
+          await context.spHttpClient.post(
+            `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items(${row.spId})`,
+            SPHttpClient.configurations.v1,
+            {
+              headers: {
+                Accept: "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata",
+                "odata-version": "",
+                "IF-MATCH": "*",
+                "X-HTTP-Method": "MERGE",
+              },
+              body: JSON.stringify({
+                WorkflowStatus: "In Approval",
+                WorkflowStage: nextStage,
+                CurrentApproverEmail: nextLevel.approverEmail,
+                ...(nextApproverId ? { CurrentApproverId: nextApproverId } : {}),
+                LastUpdatedOn: new Date().toISOString(),
+              }),
+            }
+          );
+
+          // Update local row so the table reflects the change immediately
+          setRows((prev) =>
+            prev.map((r) =>
+              r.spId === row.spId
+                ? {
+                    ...r,
+                    status: "In Approval",
+                    workflowStage: nextStage,
+                    currentApproverEmail: nextLevel.approverEmail,
+                    currentApproverId: nextApproverId || 0,
+                    qty: finalTotalQty,
+                    price: finalTotalAmount,
+                    lastActivityIso: new Date().toISOString(),
+                  }
+                : r
+            )
+          );
+
+          return { success: true, message: msg, newStatus: "In Approval" };
+        }
+      }
+
+      // ── UPDATE LOCAL ROW STATE on success (final approval / rejection) ──
       if (ok && newStatus) {
         setRows((prev) =>
           prev.map((r) =>

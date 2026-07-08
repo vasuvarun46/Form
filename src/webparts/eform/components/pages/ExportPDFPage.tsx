@@ -159,7 +159,7 @@ function getStatusDisplay(status?: string): { label: string; className: string }
   if (s === "submitted") return { label: "ส่งแล้ว / SUBMITTED", className: "text-blue-600" };
   if (s === "approved") return { label: "อนุมัติ / APPROVED", className: "text-green-600" };
   if (s === "rejected") return { label: "ปฏิเสธ / REJECTED", className: "text-red-600" };
-  if (s === "in approval" || s === "pending") return { label: "อยู่ระหว่างการอนุมัติ / IN APPROVAL", className: "text-amber-600" };
+  if (s === "in approval" || s === "in-approval" || s === "pending") return { label: "ส่งแล้ว / SUBMITTED", className: "text-blue-600" };
   if (s === "draft") return { label: "แบบร่าง / DRAFT", className: "text-gray-500" };
   return { label: status || "-", className: "text-gray-600" };
 }
@@ -169,7 +169,7 @@ function getSubmitDisplay(status?: string): { label: string; className: string }
   if (s === "submitted") return { label: "Submitted", className: "text-blue-600" };
   if (s === "approved") return { label: "Approved", className: "text-green-600" };
   if (s === "rejected") return { label: "Rejected", className: "text-red-600" };
-  if (s === "in approval" || s === "pending") return { label: "In Approval", className: "text-amber-600" };
+  if (s === "in approval" || s === "in-approval" || s === "pending") return { label: "Submitted", className: "text-blue-600" };
   if (s === "draft") return { label: "Draft", className: "text-gray-500" };
   return { label: status || "-", className: "text-gray-600" };
 }
@@ -548,6 +548,7 @@ export default function ExportPDFPage({
         const url =
           `${webUrl}/_api/web/lists/getbytitle('${listTitle}')/items(${spId})` +
           `?$select=Id,RequestSubmittedOn,${Title},${ApproverNames},CurrentApproverEmail,` +
+          `WorkflowStage,HasMultipleApprovals,ApprovalChainJSON,` +
           `${requesterInternal}/Title,${requesterInternal}/EMail,${jobInternal},${deptInternal}/Title,` +
           `${expectedInternal},${placeInternal},${purposeDetailsInternal},` +
           `${multipleApproverDataInternal},${costInternal}/Title,` +

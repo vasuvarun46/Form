@@ -40,11 +40,9 @@ function StatusText({ status }: { status: string }): JSX.Element {
     key === "in-approval";
 
   const display =
-    key === "submitted"
+    key === "submitted" || isInApproval
       ? "Submitted"
-      : isInApproval
-        ? "In-Approval"
-        : key === "approved"
+      : key === "approved"
           ? "Approved"
           : key === "rejected"
             ? "Rejected"
@@ -688,7 +686,7 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
                   description="You don't have permission to view team requests."
                   showAction={false}
                 />
-              ) : rows.length === 0 && !hasAppliedFilters ? (
+              ) : rows.length === 0 && !hasAppliedFilters && !tableLoading ? (
                 <RequestEmptyState
                   title="Empty team's requests"
                   description="There is no any submitted requests from the team yet"

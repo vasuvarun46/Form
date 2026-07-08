@@ -178,11 +178,9 @@ export async function buildApprovalChainFromLists(
     }
   }
 
-
-
   // ── 3b. ROLE AUTHORITY HELPERS (name-based, not index-based) ────────────
-  // Manager = lowest authority (0), C2 = highest (3).
-  // This must not rely on the order SharePoint returns LOA fields.
+  // Low index = lower authority (approves first).
+  // Matches the LOA Details columns: Manager → Executive → C1 Level → C2 Level
   const ROLE_AUTHORITY_ORDER: string[][] = [
     ["MANAGER"],
     ["EXECUTIVE", "EXECUTED"],
@@ -242,12 +240,23 @@ export async function buildApprovalChainFromLists(
   }
 
   if (!matchedLOA) return fallback("NO_LOA_MATCH");
-  const resolvedLOA = matchedLOA; // const — safe to use inside callbacks
+  let resolvedLOA = matchedLOA;
 
   // ── 7. COUNT ENABLED CHECKBOXES ─────────────────────────────────────────
-  const enabledFlags = approvalFlagFields.filter(
+  let enabledFlags = approvalFlagFields.filter(
     (f) => resolvedLOA[f.InternalName] === true
   );
+
+  // If the matched LOA tier has no approver flags, climb to the lowest tier that does
+  if (!enabledFlags.length) {
+    const tierWithApprovers = loaRows.find(
+      (row) => row !== matchedLOA && approvalFlagFields.some((f) => row[f.InternalName] === true)
+    );
+    if (tierWithApprovers) {
+      resolvedLOA = tierWithApprovers;
+      enabledFlags = approvalFlagFields.filter((f) => resolvedLOA[f.InternalName] === true);
+    }
+  }
 
   if (!enabledFlags.length) return fallback("NO_APPROVER_FOUND");
 
@@ -258,7 +267,15 @@ export async function buildApprovalChainFromLists(
 
 
   // ── 9. BUILD ORDERED LEVELS (LOW → HIGH authority) ───────────────────────
-  const approvalFlagFieldsLowToHigh = approvalFlagFields.slice().reverse();
+  // Sort by authority level (low → high) using the role hierarchy above.
+  // Replaces .reverse() which was unreliable — SharePoint field order is not guaranteed.
+  const approvalFlagFieldsLowToHigh = approvalFlagFields.slice().sort((a, b) => {
+    const aLvl = getRoleAuthorityLevel(a.Title);
+    const bLvl = getRoleAuthorityLevel(b.Title);
+    const aSort = aLvl === -1 ? 999 : aLvl;
+    const bSort = bLvl === -1 ? 999 : bLvl;
+    return aSort - bSort;
+  });
 
   type RawLevel = {
     roleName: string;

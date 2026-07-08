@@ -30,11 +30,9 @@ function StatusText({ status }: { status: string }): JSX.Element {
 
   // Display text
   const display =
-    key === "submitted"
+    key === "submitted" || isInApproval
       ? "Submitted"
-      : isInApproval
-        ? "In-Approval"
-        : key === "approved"
+      : key === "approved"
           ? "Approved"
           : key === "rejected"
             ? "Rejected"
@@ -143,7 +141,14 @@ export default function AllRequestPage(
       const key = canonicalizeStatusFilterKey(status);
       return key !== draftKey && key !== failedKey && key !== inApprovalKey;
     };
-    const cleaned = dedupeLabels(choices, canonicalizeStatusFilterKey).filter(exclude);
+    const STATUS_ORDER = ["Approved", "Rejected", "Submitted"];
+    const cleaned = dedupeLabels(choices, canonicalizeStatusFilterKey)
+      .filter(exclude)
+      .sort((a, b) => {
+        const ai = STATUS_ORDER.findIndex(s => canonicalizeStatusFilterKey(s) === canonicalizeStatusFilterKey(a));
+        const bi = STATUS_ORDER.findIndex(s => canonicalizeStatusFilterKey(s) === canonicalizeStatusFilterKey(b));
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      });
     setStatusOptions(cleaned);
     setStatusFilter((prev) => prev.filter(exclude));
   };
