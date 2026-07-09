@@ -87,7 +87,6 @@ export default function AllRequestPage(
 
   const [pageSize] = React.useState<number>(15);
   const [pageIndex, setPageIndex] = React.useState<number>(0);
-  const [sortState, setSortState] = React.useState<0 | 1>(0);
 
   const [searchDraft, setSearchDraft] = React.useState<string>("");
   const [searchText, setSearchText] = React.useState<string>("");
@@ -212,12 +211,7 @@ export default function AllRequestPage(
     return deduped;
   }, [rows, statusFilter, purposeFilter, costCenterFilter, expectedFrom, expectedTo, searchText]);
 
-  const sortedRows: Row[] = React.useMemo(() => {
-    if (sortState === 1) {
-      return [...filteredRows].sort((a, b) => a.spId - b.spId);
-    }
-    return filteredRows;
-  }, [filteredRows, sortState]);
+  const sortedRows: Row[] = filteredRows;
   const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
 
   const safePageIndex = Math.min(pageIndex, totalPages - 1);
@@ -514,10 +508,6 @@ export default function AllRequestPage(
   }, [loadAll]);
 
   React.useEffect(() => {
-    setPageIndex(0);
-  }, [sortState]);
-
-  React.useEffect(() => {
     loadStatusOptions().catch(() => undefined);
     loadPurposeOptions().catch(() => undefined);
     loadCostCenterOptions().catch(() => undefined);
@@ -805,10 +795,6 @@ export default function AllRequestPage(
       }}
 
       onResetPage={() => setPageIndex(0)}
-      onSortToggle={() => {
-        setSortState((prev) => (prev === 0 ? 1 : 0));
-        setPageIndex(0);
-      }}
       pageRows={pageRows}
       filteredRows={sortedRows}
       columns={columns}

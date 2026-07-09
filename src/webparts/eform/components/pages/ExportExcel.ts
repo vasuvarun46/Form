@@ -7,6 +7,7 @@ export interface ExportRequestRow {
   status: string;
   requestor: string;
   approver?: string;
+  approverNames?: string;
   purpose?: string;
   purposeDetail?: string;
   PurposeDetails?: string;
@@ -166,7 +167,7 @@ export async function exportToExcel(rows: ExportRequestRow[]): Promise<void> {
       r.id,
       r.status,
       r.requestor,
-      r.approver || "",
+      r.approverNames || r.approver || "",
       r.purpose || "",
       r.purposeDetail || r.PurposeDetails || "",
       r.costCenter || "",

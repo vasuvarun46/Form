@@ -1178,7 +1178,7 @@ React.useEffect(() => {
     // This also kills the "Something went wrong" popup that was firing
     // from validateForm on the re-submit attempt.
     // ─────────────────────────────────────────────────────────────────
-    if (opts?.allowExcelInsufficient && inventoryMode === "excel") {
+    if (opts?.allowExcelInsufficient) {
       return true;
     }
 
@@ -1450,6 +1450,12 @@ React.useEffect(() => {
      SUBMIT
      ========================================================= */
   const handleSubmit = async (opts?: { allowExcelInsufficient?: boolean }): Promise<void> => {
+    // When user clicks "OK, Got it" on insufficient-stock popup, skip the
+    // in-flight guard and force a clean slate so the submit always proceeds.
+    if (opts?.allowExcelInsufficient) {
+      persistInFlightRef.current = false;
+      setIsSubmitting(false);
+    }
     if (persistInFlightRef.current) return;
     persistInFlightRef.current = true;
     setIsSubmitting(true);
@@ -1464,7 +1470,11 @@ React.useEffect(() => {
       const purposeId: number | undefined = purposeMatches.length ? purposeMatches[0].Id : undefined;
       const costCenterId: number | undefined = costCenterMatches.length ? costCenterMatches[0].Id : undefined;
       if (!purposeId || !costCenterId) {
-        throw new Error("Purpose/Cost Center lookup Id not found. Check master lists.");
+        setCustomErrorMessage(
+          `Unable to find the selected ${!purposeId ? "Purpose" : "Cost Center"} in the master list. Please re-select it and try again.`
+        );
+        setCustomErrorOpen(true);
+        return;
       }
 
       const chain = await buildApprovalChainFromLists(context, totalAmount);
@@ -1645,8 +1655,10 @@ React.useEffect(() => {
 
     } catch (e: unknown) {
       console.error(e);
-      const message = e instanceof Error ? e.message : "Submit failed.";
+      const message = e instanceof Error ? e.message : "Submit failed. Please try again.";
       setSubmitError(message);
+      setCustomErrorMessage(message);
+      setCustomErrorOpen(true);
     } finally {
       setIsSubmitting(false);
       const ref = persistInFlightRef;
@@ -1876,6 +1888,9 @@ React.useEffect(() => {
         setExcelFailPopupOpen(false);
         handleSubmit({ allowExcelInsufficient: true }).catch((e: unknown) => {
           console.error("Submit failed:", e);
+          const message = e instanceof Error ? e.message : "Submit failed. Please try again.";
+          setCustomErrorMessage(message);
+          setCustomErrorOpen(true);
         });
       }}
     />

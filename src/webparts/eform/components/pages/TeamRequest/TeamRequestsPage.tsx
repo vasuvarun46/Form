@@ -109,7 +109,6 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
 
   const [searchField, setSearchField] = React.useState<SearchFieldKey>("TransactionID");
   const [searchDraft, setSearchDraft] = React.useState<string>("");
-  const [sortState, setSortState] = React.useState<0 | 1>(0);
 
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const [manualSelectedIds, setManualSelectedIds] = React.useState<string[]>([]);
@@ -193,15 +192,7 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
 
   const [appliedSearchText, setAppliedSearchText] = React.useState<string>("");
 
-  /* =========================================================
-     SORT
-  ========================================================== */
-  const sortedRows = React.useMemo((): Row[] => {
-    if (sortState === 1) {
-      return [...filteredRows].sort((a, b) => a.spId - b.spId);
-    }
-    return filteredRows;
-  }, [filteredRows, sortState]);
+  const sortedRows: Row[] = filteredRows;
 
 
   const hasActiveFilters =
@@ -742,22 +733,6 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
                         }}
 
                       />
-                      <button
-                        onClick={() => { setSortState((prev) => (prev === 0 ? 1 : 0)); goFirst(); }}
-                        className="inline-flex h-7 items-center gap-1.5 rounded-md border border-gray-200 bg-gray-100 px-2.5 text-[12px] font-medium text-gray-800 transition-colors duration-200 hover:bg-gray-200"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-3.5 w-3.5 text-gray-500"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={2}
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 7l4-4 4 4M16 17l-4 4-4-4" />
-                        </svg>
-                        Sort
-                      </button>
                     </div>
 
                     <TeamRequestsTable
