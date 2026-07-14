@@ -9,6 +9,7 @@ import { CostCenterOption, FlowItemResponse, IItemRow, ISuparaItem, ItemRowError
    Flow URL
    ========================================================= */
 
+
 /* =========================================================
    REQUIRED: Use the given function (NO any)
    ========================================================= */
@@ -1699,7 +1700,7 @@ export const validateExcelItemsWithFlowBulk = async (
       ...baseRow,
       productCode: String(flow.ProductCode || ""),
       color: String(flow.ColourDesc || "-"),
-      size: String(flow.SizeDesc || "-"),
+      size: String(flow.SizeCode || "-"),
       unitPrice: Number(flow.Original_sp || 0),
       maxStock: Number(flow.Warehouse_SOH_Qty ?? 0),
     });

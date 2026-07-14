@@ -37,6 +37,7 @@ export interface Row {
   modifiedIso?: string;
   lastActivityIso?: string;
   ApproverNames?:string
+  multipleApproverData?: string;
 }
 
 /* ==========================================
@@ -80,6 +81,7 @@ export interface InventoryRequestSPItem {
   TotalQuantity?: number;
   TotalAmount?: number;
   Modified?: string;
+  MultipleApproverData?: string;
 }
 
 /* ==========================================

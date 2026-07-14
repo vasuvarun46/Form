@@ -83,9 +83,9 @@ export default function QtyStepper({
       <button
         type="button"
         style={{ borderLeft: `2px solid ${isHovered ? "#76A8E8" : "#C4C4C4"}`, borderRight: "none", borderTop: "none", borderBottom: "none" }}
-        className={`w-9 h-8 text-gray-700 ${disabled || (maxStock !== undefined && maxStock > 0 && currentQty >= maxStock) ? "bg-[#D9D9D9] cursor-not-allowed" : "bg-white hover:bg-[#E8E8E8]"}`}
+        className={`w-9 h-8 text-gray-700 ${disabled || (maxStock !== undefined && currentQty >= maxStock) ? "bg-[#D9D9D9] cursor-not-allowed" : "bg-white hover:bg-[#E8E8E8]"}`}
         onClick={onInc}
-        disabled={disabled || (maxStock !== undefined && maxStock > 0 && currentQty >= maxStock)}
+        disabled={disabled || (maxStock !== undefined && currentQty >= maxStock)}
 
         aria-label="Increase quantity"
       >

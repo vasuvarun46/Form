@@ -55,6 +55,7 @@ interface Row {
   modifiedIso?: string;
   lastActivityIso?: string;
   ApproverNames?: string;
+  multipleApproverData?: string;
 }
 
 interface SPListResponse<T> {
@@ -88,6 +89,7 @@ interface InventoryRequestSPItem {
   Modified?: string;
   ApproverNames?: string;
   ApprovalChainJSON?: string;
+  MultipleApproverData?: string;
 }
 
 /* ================= HELPERS ================= */
@@ -110,7 +112,7 @@ function StatusPill({ status }: { status: Status }): JSX.Element {
       : isPending
         ? "Pending"
         : isInApproval
-          ? "In-Approval"
+          ? "Submitted"
           : key === "approved"
             ? "Approved"
             : key === "rejected"
@@ -456,7 +458,7 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
       const url =
         `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items` +
         `?$top=5000&$select=Id,Title,RequestNumber,WorkflowStatus,TotalQuantity,TotalAmount,Modified,` +
-        `PurposeDetails,RequestCreatedOn,RequestSubmittedOn,FinalDecisionDate,ApprovedDates,ExpectedDeliveryDate,ApproverNames,` +
+        `PurposeDetails,RequestCreatedOn,RequestSubmittedOn,FinalDecisionDate,ApprovedDates,ExpectedDeliveryDate,ApproverNames,MultipleApproverData,` +
         `Requester/Title,Requester/EMail,CurrentApprover/Title,Purpose/Title,CostCenter/Title,Department/Title` +
         `&$expand=Requester,CurrentApprover,Purpose,CostCenter,Department` +
         `&$filter=${clauses.join(" and ")}` +
@@ -500,6 +502,7 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
           status: workflowStatus as Status,
           requestor: it.Requester?.Title || "",
           approver: it.ApproverNames || "",
+          multipleApproverData: it.MultipleApproverData,
           department: it.Department?.Title || "",
           purpose: it.Purpose?.Title || "",
           purposeDetail: it.PurposeDetails || "",
@@ -708,7 +711,7 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
       thClassName: "w-[8%]",
       tdClassName: "w-[8%]",
       render: (r: Row) => (
-        <CellText value={r.status === "Approved" || r.status === "Rejected" ? (r.approver === "-" ? "" : r.approver) : ""} maxWidth="max-w-full" />
+        <CellText value={r.approver === "-" ? "" : (r.approver || "")} maxWidth="max-w-full" />
       ),
     },
     {
@@ -807,11 +810,27 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
 
   // Load Purpose & Cost Center from master lists
   const [purposeOptions, setPurposeOptions] = React.useState<string[]>([]);
+
   const [costCenterOptions, setCostCenterOptions] = React.useState<string[]>([]);
+  React.useEffect(() => {
+    if (allRows.length === 0) return;
+    setCostCenterOptions(prev => {
+      const seen = new Set(prev);
+      let changed = false;
+      for (const r of allRows) {
+        const cc = String(r.costCenter || "").trim();
+        if (cc && cc !== "-" && !seen.has(cc)) {
+          seen.add(cc);
+          changed = true;
+        }
+      }
+      if (!changed) return prev;
+      return Array.from(seen).sort((a, b) => a.localeCompare(b));
+    });
+  }, [allRows]);
 
   React.useEffect(() => {
     const siteUrl = context.pageContext.web.absoluteUrl;
-    const email = context.pageContext.user.email.replace(/'/g, "''");
 
     context.spHttpClient.get(
       `${siteUrl}/_api/web/lists/getbytitle('PurposeMaster')/items?$top=5000&$select=Title&$filter=IsActive eq 1&$orderby=Title asc`,
@@ -819,21 +838,6 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
     ).then(r => r.json()).then(json => {
       const titles: string[] = (json?.value || []).map((x: { Title?: string }) => String(x?.Title || "")).filter(Boolean);
       setPurposeOptions(dedupeLabels(titles));
-    }).catch(() => undefined);
-
-    context.spHttpClient.get(
-      `${siteUrl}/_api/web/lists/getbytitle('EForm%20Users')/items?$top=1&$select=Department/Id&$expand=Department&$filter=Email eq '${email}'`,
-      SPHttpClient.configurations.v1
-    ).then(r => r.json()).then(userJson => {
-      const deptId = userJson?.value?.[0]?.Department?.Id;
-      const deptFilter = deptId ? ` and Department/Id eq ${deptId}` : "";
-      return context.spHttpClient.get(
-        `${siteUrl}/_api/web/lists/getbytitle('CostCenterMaster')/items?$top=5000&$select=Title,Department/Id&$expand=Department&$filter=IsActive eq 1${deptFilter}&$orderby=Title asc`,
-        SPHttpClient.configurations.v1
-      );
-    }).then(r => r.json()).then(json => {
-      const titles: string[] = (json?.value || []).map((x: { Title?: string }) => String(x?.Title || "")).filter(Boolean);
-      setCostCenterOptions(dedupeLabels(titles));
     }).catch(() => undefined);
   }, []);
 

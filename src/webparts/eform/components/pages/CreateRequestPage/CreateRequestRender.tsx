@@ -235,7 +235,6 @@ export default function CreateRequestRender(props: Props): JSX.Element {
     openExcelHelp,
     closeExcelHelp,
     setItemErrors,
-    removeItem,
     context,
     totalQty,
     totalAmount,
@@ -349,7 +348,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
   const clampQty = (v: number) => Math.max(0, v);
   const getManualQtyError = (qty: number, maxStock: number): string => {
     if (!Number.isFinite(qty) || qty < 1 || qty > 999 || qty > maxStock) {
-      return `Quantity must be 1-999 and not exceed\navailable stock (${maxStock} pcs).`;
+      return `Quantity must be 1–999 and not exceed\navailable stock (${maxStock} pcs).`;
     }
     return "";
   };
@@ -989,6 +988,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                                 onDec={() => updateQty(idx, Number(it.qty) - 1)}
                                 onInc={() => updateQty(idx, Number(it.qty) + 1)}
                                 onChange={(v) => updateQty(idx, v)}
+                                maxStock={it.maxStock}
                               />
                             </div>
                             {rowErr && (
@@ -1003,15 +1003,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                             <Td>
                               <button
                                 type="button"
-                                onClick={() => {
-                                  if (rowErr) {
-                                    removeItem(idx);
-                                    setItemErrors({});
-                                    setExcelErrors([]);
-                                  } else {
-                                    openRemoveConfirm(idx, it.sku);
-                                  }
-                                }}
+                                onClick={() => openRemoveConfirm(idx, it.sku)}
                                 className="h-8 sm:h-9 px-3 sm:px-4 whitespace-nowrap rounded-md text-[11px] sm:text-[12px] font-semibold transition-all duration-200 !border !border-[#DA2128] !bg-[#FBE9EA] !text-[#DA2128] hover:!bg-[#DA2128] hover:!text-white hover:!border-[#DA2128]"
                               >
                                 <span className="inline-flex items-center gap-1">

@@ -40,6 +40,7 @@ export interface Row {
   requesterEmail: string;
   approver: string;
   approverNames: string; // ✅ NEW: ApproverNames column value
+  multipleApproverData?: string;
 
   purpose: string;
   purposeDetail?: string;
@@ -367,7 +368,6 @@ export function useTeamRequestsLogic(
 
   const [statusOptions, setStatusOptions] = React.useState<string[]>([]);
   const [purposeOptions, setPurposeOptions] = React.useState<string[]>([]);
-  const [costCenterOptions, setCostCenterOptions] = React.useState<string[]>([]);
 
   const [profile, setProfile] = React.useState<EFormUserProfile | null>(null);
 
@@ -461,39 +461,19 @@ export function useTeamRequestsLogic(
   ========================================================= */
 
   const loadMasterOptions = React.useCallback(
-    async (p: EFormUserProfile): Promise<void> => {
+    async (_p: EFormUserProfile): Promise<void> => {
       const purposeUrl =
         `${siteUrl}/_api/web/lists/getbytitle('PurposeMaster')/items` +
         `?$select=Id,Title,IsActive` +
         `&$filter=IsActive eq 1` +
         `&$orderby=Title asc`;
 
-      const hasDepth = !!p.departmentId;
-      const ccFilter = hasDepth
-        ? `IsActive eq 1 and Department/Id eq ${p.departmentId}`
-        : `IsActive eq 1`;
-
-      const costCenterUrl =
-        `${siteUrl}/_api/web/lists/getbytitle('CostCenterMaster')/items` +
-        `?$select=Id,Title,IsActive,Department/Id,Department/Title` +
-        `&$expand=Department` +
-        `&$filter=${ccFilter}` +
-        `&$orderby=Title asc`;
-
-      const [purposeJson, ccJson] = await Promise.all([
-        spGetJson(context, purposeUrl),
-        spGetJson(context, costCenterUrl),
-      ]);
+      const purposeJson = await spGetJson(context, purposeUrl);
 
       const purposeTitles: string[] = (purposeJson?.value || [])
         .map((x: any) => String(x?.Title || "").trim())
         .filter(Boolean);
       setPurposeOptions(dedupeLabels(purposeTitles));
-
-      const ccTitles: string[] = (ccJson?.value || [])
-        .map((x: any) => String(x?.Title || "").trim())
-        .filter(Boolean);
-      setCostCenterOptions(dedupeLabels(ccTitles));
     },
     [context, siteUrl]
   );
@@ -690,6 +670,7 @@ export function useTeamRequestsLogic(
             getActedApproverName(it?.MultipleApproverData, workflowStatus) ??
             String(it?.CurrentApprover?.Title || ""),
           approverNames, // ✅ NEW
+          multipleApproverData: it?.MultipleApproverData ? String(it.MultipleApproverData) : undefined,
 
           purpose: String(it?.Purpose?.Title || ""),
           purposeDetail: it?.PurposeDetails ? String(it.PurposeDetails) : undefined,
@@ -817,8 +798,7 @@ export function useTeamRequestsLogic(
 
       if (
         statusOptions.length === 0 ||
-        purposeOptions.length === 0 ||
-        costCenterOptions.length === 0
+        purposeOptions.length === 0
       ) {
         await Promise.all([loadMasterOptions(p), loadStatusChoices()]);
       }
@@ -840,7 +820,6 @@ export function useTeamRequestsLogic(
     hasApproverRole,
     statusOptions.length,
     purposeOptions.length,
-    costCenterOptions.length,
     loadEFormUserProfile,
     loadWorkflowConfig,
     checkApproverRole,
@@ -854,6 +833,24 @@ export function useTeamRequestsLogic(
   ========================================================= */
 
   const filteredRows = React.useMemo(() => [...rows], [rows]);
+
+  const [costCenterOptions, setCostCenterOptions] = React.useState<string[]>([]);
+  React.useEffect(() => {
+    if (rows.length === 0) return;
+    setCostCenterOptions(prev => {
+      const seen = new Set(prev);
+      let changed = false;
+      for (const r of rows) {
+        const cc = String(r.costCenter || "").trim();
+        if (cc && cc !== "-" && !seen.has(cc)) {
+          seen.add(cc);
+          changed = true;
+        }
+      }
+      if (!changed) return prev;
+      return Array.from(seen).sort((a, b) => a.localeCompare(b));
+    });
+  }, [rows]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
 
@@ -898,7 +895,15 @@ export function useTeamRequestsLogic(
       }
 
       if (row.finalDecisionEmail && row.finalDecisionEmail.trim().length > 0) {
-        return { canAct: false, showReject: false };
+        // FinalDecisionEmail is set when C1 approves in multi-approver flows,
+        // not just when the overall request is finalised. Only block if the current
+        // user is NOT the current approver — if they are, let the path below decide.
+        const _email = currentUserEmailRaw;
+        const _isCurrentApprover =
+          !!row.currentApproverEmail && row.currentApproverEmail === _email;
+        if (!_isCurrentApprover) {
+          return { canAct: false, showReject: false };
+        }
       }
 
       const loginEmail = currentUserEmailRaw;
@@ -913,6 +918,12 @@ export function useTeamRequestsLogic(
             l.canApproveRequest === true
         );
         if (canApprove) return { canAct: true, showReject: true };
+
+        // Fallback: SP's CurrentApproverEmail is authoritative — covers C2
+        // when allApprovalLevels hasn't been updated by PA yet.
+        if (!!row.currentApproverEmail && row.currentApproverEmail === loginEmail) {
+          return { canAct: true, showReject: true };
+        }
 
         const isInChainWaiting = row.allApprovalLevels.some(
           (l) => l.approverEmail === loginEmail && l.canApproveRequest === false

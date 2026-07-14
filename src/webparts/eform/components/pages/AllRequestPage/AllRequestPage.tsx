@@ -106,7 +106,6 @@ export default function AllRequestPage(
 
   const [statusOptions, setStatusOptions] = React.useState<string[]>([]);
   const [purposeOptions, setPurposeOptions] = React.useState<string[]>([]);
-  const [costCenterOptions, setCostCenterOptions] = React.useState<string[]>([]);
 
   const STORAGE_KEY_APPROVED = "allreq_approved_count";
   const STORAGE_KEY_REJECTED = "allreq_rejected_count";
@@ -168,31 +167,23 @@ export default function AllRequestPage(
     setPurposeOptions(dedupeLabels(titles));
   };
 
-  const loadCostCenterOptions = async (): Promise<void> => {
-    const siteUrl = context.pageContext.web.absoluteUrl;
-    const email = context.pageContext.user.email.replace(/'/g, "''");
-
-    // Get department ID from EForm Users (same source as Create Request)
-    const userRes = await context.spHttpClient.get(
-      `${siteUrl}/_api/web/lists/getbytitle('EForm%20Users')/items?$top=1&$select=Department/Id&$expand=Department&$filter=Email eq '${email}'`,
-      SPHttpClient.configurations.v1
-    );
-    const userJson = await userRes.json();
-    const deptId = userJson?.value?.[0]?.Department?.Id;
-    const deptFilter = deptId ? ` and Department/Id eq ${deptId}` : "";
-
-    const response = await context.spHttpClient.get(
-      `${siteUrl}/_api/web/lists/getbytitle('CostCenterMaster')/items?$top=5000&$select=Title,Department/Id&$expand=Department&$filter=IsActive eq 1${deptFilter}&$orderby=Title asc`,
-      SPHttpClient.configurations.v1
-    );
-
-    const json = await response.json();
-    const titles: string[] = (Array.isArray(json?.value) ? json.value : []).map(
-      (item: { Title?: string }) => String(item?.Title || "")
-    );
-
-    setCostCenterOptions(dedupeLabels(titles));
-  };
+  const [costCenterOptions, setCostCenterOptions] = React.useState<string[]>([]);
+  React.useEffect(() => {
+    if (rows.length === 0) return;
+    setCostCenterOptions(prev => {
+      const seen = new Set(prev);
+      let changed = false;
+      for (const r of rows) {
+        const cc = String(r.costCenter || "").trim();
+        if (cc && cc !== "-" && !seen.has(cc)) {
+          seen.add(cc);
+          changed = true;
+        }
+      }
+      if (!changed) return prev;
+      return Array.from(seen).sort((a, b) => a.localeCompare(b));
+    });
+  }, [rows]);
 
   /* =====================================================
      FILTERING LOGIC (UNCHANGED)
@@ -456,6 +447,7 @@ export default function AllRequestPage(
           status: workflowStatus as Status,
           requestor: it.Requester?.Title ?? "-",
           approver: it.ApproverNames,
+          multipleApproverData: it.MultipleApproverData,
           department: it.Department?.Title ?? "-", // ✅ lookup title
           purpose: it.Purpose?.Title ?? "-",
           PurposeDetails: it.PurposeDetails ?? "-",
@@ -510,7 +502,6 @@ export default function AllRequestPage(
   React.useEffect(() => {
     loadStatusOptions().catch(() => undefined);
     loadPurposeOptions().catch(() => undefined);
-    loadCostCenterOptions().catch(() => undefined);
   }, []);
 
   // ✅ FIXED — no user filter, counts ALL records across all users
@@ -662,7 +653,7 @@ export default function AllRequestPage(
       thClassName: "w-[8%]",
       tdClassName: "w-[8%]",
       render: (r: Row) => (
-        <CellText value={r.status === "Approved" || r.status === "Rejected" ? (r.approver === "-" ? "" : r.approver) : ""} maxWidth="max-w-full" />
+        <CellText value={r.approver === "-" ? "" : (r.approver || "")} maxWidth="max-w-full" />
       ),
     },
     {

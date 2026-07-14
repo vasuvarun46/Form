@@ -65,12 +65,12 @@ type InventoryRequestItemJson = Record<string, unknown> & {
   Purpose?: SpLookupTitle;
   RequestSubmittedOn?: string;
   CurrentApproverEmail?: string;
+  FinalDecisionEmail?: string;
 };
 
 type ExportData = {
   Title: string;
   requester: string;
-  jobPosition: string;
   department: string;
   costCenter: string;
   expectedDeliveryDate: string;
@@ -86,6 +86,8 @@ type ExportData = {
   approvalStatus: string;
   workflowStatus: string;
   currentApproverEmail?: string;
+  finalDecisionEmail?: string;
+  currentApproverPersonEmail?: string;
 };
 
 type LineItem = {
@@ -199,6 +201,25 @@ function cleanPositionText(value?: string): string {
   return s;
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Scans an object's own string values for anything shaped like an email
+ * address, regardless of what its key is called. Used as a last-resort way
+ * to pull the acting approver's email out of the flow's MultipleApproverData
+ * stage JSON when none of the specific field names we've tried match its
+ * actual schema.
+ */
+function findEmailInObject(obj: Record<string, unknown> | undefined): string {
+  if (!obj) return "";
+  for (const value of Object.values(obj)) {
+    if (typeof value !== "string") continue;
+    const candidate = value.trim().toLowerCase();
+    if (EMAIL_PATTERN.test(candidate)) return candidate;
+  }
+  return "";
+}
+
 /* =========================================================
    fetchSPUserProfile
    Queries the SharePoint People Search index for a user by
@@ -250,6 +271,41 @@ async function fetchSPUserProfile(
   }
 }
 
+/* =========================================================
+   fetchEFormUserJobPosition
+   The "EForm Users" list's Jobposition field is the same source
+   used to stamp JobPosition onto a request at submit time — a
+   more reliable fallback than the People Search index above,
+   which depends on Search/User Profile sync being fully
+   configured for every account (approvers included). Matched by
+   email only — no name-based matching.
+========================================================= */
+async function fetchEFormUserJobPosition(
+  context: WebPartContext,
+  email: string
+): Promise<string> {
+  try {
+    const siteUrl = context.pageContext.web.absoluteUrl;
+    const safeEmail = email.trim().toLowerCase().replace(/'/g, "''");
+    if (!safeEmail) return "";
+
+    const url =
+      `${siteUrl}/_api/web/lists/getbytitle('EForm%20Users')/items` +
+      `?$select=Jobposition` +
+      `&$filter=Email eq '${safeEmail}'` +
+      `&$top=1`;
+
+    const res = await context.spHttpClient.get(url, SPHttpClient.configurations.v1, {
+      headers: { Accept: "application/json;odata=nometadata", "odata-version": "" },
+    });
+    if (!res.ok) return "";
+
+    const data = (await res.json()) as { value?: Array<{ Jobposition?: string }> };
+    return cleanDisplayText(data?.value?.[0]?.Jobposition || "");
+  } catch {
+    return "";
+  }
+}
 
 function parseMultipleApproverData(raw: unknown): ParsedMultipleApproverData | null {
   if (raw === null || raw === undefined) return null;
@@ -297,10 +353,11 @@ function parseMultipleApproverData(raw: unknown): ParsedMultipleApproverData | n
     : [];
   const allApprovalLevels: AllApprovalLevel[] = allApprovalLevelsRaw.map((l) => {
     const level = (l || {}) as Record<string, unknown>;
+    const levelEmailRaw = cleanDisplayText(String(level.approverEmail ?? "")).toLowerCase();
     return {
       order: Number(level.order ?? 0),
       approvalRole: cleanDisplayText(String(level.approvalRole ?? "")),
-      approverEmail: cleanDisplayText(String(level.approverEmail ?? "")).toLowerCase(),
+      approverEmail: levelEmailRaw || findEmailInObject(level),
       approverId: Number(level.approverId ?? 0),
       canApproveRequest: level.canApproveRequest === true,
       canViewRequest: level.canViewRequest === true,
@@ -324,10 +381,23 @@ function parseMultipleApproverData(raw: unknown): ParsedMultipleApproverData | n
         String(stage.approverEmail ?? stage.ApproverEmail ?? "")
       ).toLowerCase();
 
-      const emailToResolve = approverEmailRaw || actionByEmail;
-      const matchedLevel = emailToResolve
-        ? allApprovalLevels.find((l) => l.approverEmail === emailToResolve)
-        : undefined;
+      // allApprovalLevels is a separately-built, order-indexed chain config that
+      // reliably carries each approver's email — use it as a fallback when the
+      // per-stage JSON itself has no approverEmail/ApproverEmail/ActionBy value.
+      const matchedLevelByOrder = allApprovalLevels.find((l) => l.order === stageValue);
+      // Last resort: scan the raw stage object for anything email-shaped,
+      // regardless of what its key is actually called in the flow's JSON.
+      const emailFoundOnStage = findEmailInObject(stage);
+      const emailToResolve =
+        approverEmailRaw ||
+        actionByEmail ||
+        matchedLevelByOrder?.approverEmail ||
+        emailFoundOnStage ||
+        "";
+      const matchedLevel =
+        (emailToResolve
+          ? allApprovalLevels.find((l) => l.approverEmail === emailToResolve)
+          : undefined) ?? matchedLevelByOrder;
 
       const resolvedApproverName = cleanDisplayText(
         String(stage.approverName ?? stage.ApproverName ?? stage.UserName ?? "")
@@ -367,7 +437,10 @@ function parseMultipleApproverData(raw: unknown): ParsedMultipleApproverData | n
         actionBy: cleanDisplayText(
           String(stage.ActionBy ?? stage.actionBy ?? stage.actionByEmail ?? "")
         ),
-        approverEmail: approverEmailRaw,
+        // Falls back to the ActionBy email when the flow's JSON doesn't include
+        // an explicit approverEmail/ApproverEmail key, so the position lookup
+        // (keyed by this email) still has something to resolve against.
+        approverEmail: emailToResolve,
         Status: cleanDisplayText(String(stage.Status ?? stage.status ?? "")),
         Date: cleanDisplayText(String(stage.Date ?? stage.date ?? "")),
       };
@@ -486,6 +559,7 @@ export default function ExportPDFPage({
   const [resolvedApproverNames, setResolvedApproverNames] = React.useState<Record<string, string>>({});
   const [requestorAadProfile, setRequestorAadProfile] = React.useState<{ jobTitle: string; department: string } | null>(null);
   const [approverAadPositions, setApproverAadPositions] = React.useState<Record<string, string>>({});
+  const [approverPositionsFetched, setApproverPositionsFetched] = React.useState(false);
   const fetchedApproverEmails = React.useRef<Set<string>>(new Set());
   const [pdfBusy, setPdfBusy] = React.useState(false);
   const canAct = exportActionInfo?.canAct ?? false;
@@ -533,7 +607,7 @@ export default function ExportPDFPage({
 
         const webUrl = context.pageContext.web.absoluteUrl;
         const requesterInternal = "Requester";
-        const jobInternal = "JobPosition";
+        const currentApproverInternal = "CurrentApprover";
         const deptInternal = "Department";
         const costInternal = "CostCenter";
         const expectedInternal = "ExpectedDeliveryDate";
@@ -547,13 +621,14 @@ export default function ExportPDFPage({
 
         const url =
           `${webUrl}/_api/web/lists/getbytitle('${listTitle}')/items(${spId})` +
-          `?$select=Id,RequestSubmittedOn,${Title},${ApproverNames},CurrentApproverEmail,` +
+          `?$select=Id,RequestSubmittedOn,${Title},${ApproverNames},CurrentApproverEmail,FinalDecisionEmail,` +
           `WorkflowStage,HasMultipleApprovals,ApprovalChainJSON,` +
-          `${requesterInternal}/Title,${requesterInternal}/EMail,${jobInternal},${deptInternal}/Title,` +
+          `${requesterInternal}/Title,${requesterInternal}/EMail,${deptInternal}/Title,` +
+          `${currentApproverInternal}/EMail,` +
           `${expectedInternal},${placeInternal},${purposeDetailsInternal},` +
           `${multipleApproverDataInternal},${costInternal}/Title,` +
           `${purposeInternal}/Title,${workflowStatusInternal}` +
-          `&$expand=${requesterInternal},${deptInternal},${costInternal},${purposeInternal}`;
+          `&$expand=${requesterInternal},${currentApproverInternal},${deptInternal},${costInternal},${purposeInternal}`;
 
         const res = await context.spHttpClient.get(url, SPHttpClient.configurations.v1);
         if (!res.ok) {
@@ -603,10 +678,15 @@ export default function ExportPDFPage({
         const requesterEmail = safeText(
           (d[requesterInternal] as SpPersonTitle | undefined)?.EMail || ""
         );
+        // Same Person-field mechanism as Requester/EMail above — a much more
+        // reliable email source than the plain-text CurrentApproverEmail/
+        // FinalDecisionEmail columns or the flow's embedded JSON.
+        const currentApproverPersonEmail = safeText(
+          (d[currentApproverInternal] as SpPersonTitle | undefined)?.EMail || ""
+        ).toLowerCase();
 
         setExportData({
           requester: safeText((d[requesterInternal] as SpPersonTitle | undefined)?.Title),
-          jobPosition: safeText(d[jobInternal]),
           department: safeText((d[deptInternal] as SpLookupTitle | undefined)?.Title),
           costCenter: safeText((d[costInternal] as SpLookupTitle | undefined)?.Title),
           expectedDeliveryDate: expectedDate,
@@ -623,6 +703,8 @@ export default function ExportPDFPage({
           approvalStatus,
           workflowStatus,
           currentApproverEmail: safeText(d.CurrentApproverEmail || "").toLowerCase(),
+          finalDecisionEmail: safeText(d.FinalDecisionEmail || "").toLowerCase(),
+          currentApproverPersonEmail,
         });
 
         // Fetch requestor's job title and department from Azure AD (via SP User Profile service)
@@ -654,10 +736,9 @@ export default function ExportPDFPage({
 
 
   const resolvedRequestorName = cleanDisplayText(exportData?.requester);
-  // Prefer Azure AD job title; fall back to SharePoint JobPosition field
+  // Job position is sourced from the Search API only
   const resolvedRequestorPosition =
-    cleanPositionText(requestorAadProfile?.jobTitle) ||
-    "-";
+    cleanPositionText(requestorAadProfile?.jobTitle) || "-";
   // Prefer Azure AD department; fall back to SharePoint Department lookup
   const resolvedRequestorDepartment =
     cleanDisplayText(exportData?.department) ||
@@ -684,13 +765,25 @@ export default function ExportPDFPage({
         return [{
           slot: 1,
           name: cleanDisplayText(exportData?.approverNames || exportData?.approverName),
-          position: cleanDisplayText(actedStage.approverJobPosition || ""),
+          position: cleanPositionText(
+            actedStage.approverJobPosition ||
+            parsedMultipleApproverData?.approvalUsers?.[0]?.position ||
+            exportData?.approverPosition ||
+            ""
+          ),
           status: normalizeApprovalStatus(actedStage.action || actedStage.Status),
           date: formatDateDdMmYyyy(actedStage.date || actedStage.Date),
           reason: cleanDisplayText(actedStage.reason),
           bypassBy: "",
-          // Use stage email if present; fall back to CurrentApproverEmail from SP
-          approverEmail: actedStage.approverEmail || exportData?.currentApproverEmail || "",
+          // FinalDecisionEmail is the authoritative source for who actually
+          // acted — it doesn't get cleared/reassigned the way
+          // CurrentApproverEmail can be once the workflow completes.
+          approverEmail:
+            exportData?.finalDecisionEmail ||
+            exportData?.currentApproverPersonEmail ||
+            actedStage.approverEmail ||
+            exportData?.currentApproverEmail ||
+            "",
           approvalRole: cleanDisplayText(actedStage.approvalRole),
         }];
       }
@@ -710,7 +803,11 @@ export default function ExportPDFPage({
         date: formatDateDdMmYyyy(cleanDisplayText(exportData?.approvedDate)),
         reason: cleanDisplayText(exportData?.rejectReason),
         bypassBy: "",
-        approverEmail: exportData?.currentApproverEmail || "",
+        approverEmail:
+          exportData?.finalDecisionEmail ||
+          exportData?.currentApproverPersonEmail ||
+          exportData?.currentApproverEmail ||
+          "",
       }];
     }
 
@@ -733,6 +830,11 @@ export default function ExportPDFPage({
     return stages.map((s, index) => {
       const slotNumber = s.stage > 0 ? s.stage : index + 1;
       const hasActed = !!cleanDisplayText(s.date || s.Date || "");
+      // FinalDecisionEmail only identifies the single, final actor on the
+      // whole request — only apply it to the last stage in the chain.
+      const isLastStage = index === stages.length - 1;
+      const stageEmail =
+        s.approverEmail || (isLastStage ? exportData?.finalDecisionEmail : "") || "";
 
       if (!hasActed) {
         return {
@@ -743,7 +845,7 @@ export default function ExportPDFPage({
           date: "",
           reason: "",
           bypassBy: "",
-          approverEmail: s.approverEmail,  // ✅
+          approverEmail: stageEmail,
           approvalRole: cleanDisplayText(s.approvalRole),
         };
       }
@@ -756,7 +858,7 @@ export default function ExportPDFPage({
         date: formatDateDdMmYyyy(s.date || s.Date),
         reason: cleanDisplayText(s.reason),
         bypassBy: "",
-        approverEmail: s.approverEmail,  // ✅
+        approverEmail: stageEmail,
         approvalRole: cleanDisplayText(s.approvalRole),
         comments: cleanDisplayText(s.reason),
       };
@@ -772,6 +874,8 @@ export default function ExportPDFPage({
     exportData?.approvedDate,
     exportData?.rejectReason,
     exportData?.currentApproverEmail,
+    exportData?.finalDecisionEmail,
+    exportData?.currentApproverPersonEmail,
   ]);
 
 
@@ -873,7 +977,8 @@ export default function ExportPDFPage({
     resolveNames().catch(() => undefined);
   }, [footerApprovers, context, resolvedApproverNames]);
 
-  // Fetch approver job positions from Azure AD / Entra ID (via SP User Profile service)
+  // Fetch approver job positions: Search API (Azure AD/Entra ID) first, falling
+  // back to the "EForm Users" list — matched by email only in both cases.
   React.useEffect(() => {
     const fetchApproverPositions = async (): Promise<void> => {
       const uniqueEmails = Array.from(
@@ -883,7 +988,13 @@ export default function ExportPDFPage({
             .filter((e) => !!e && !fetchedApproverEmails.current.has(e))
         )
       );
-      if (!uniqueEmails.length) return;
+      if (!uniqueEmails.length) {
+        setApproverPositionsFetched(true);
+        return;
+      }
+
+      // Signal that positions are being fetched (auto-export must wait)
+      setApproverPositionsFetched(false);
 
       // Mark as in-flight before async calls to prevent duplicate fetches
       uniqueEmails.forEach((e) => fetchedApproverEmails.current.add(e));
@@ -891,8 +1002,9 @@ export default function ExportPDFPage({
       const newPositions: Record<string, string> = {};
       for (const email of uniqueEmails) {
         try {
-          const profile = await fetchSPUserProfile(context, email);
-          if (profile.jobTitle) newPositions[email] = profile.jobTitle;
+          let position = (await fetchSPUserProfile(context, email)).jobTitle;
+          if (!position) position = await fetchEFormUserJobPosition(context, email);
+          if (position) newPositions[email] = position;
         } catch {
           // silently skip
         }
@@ -901,6 +1013,7 @@ export default function ExportPDFPage({
       if (Object.keys(newPositions).length > 0) {
         setApproverAadPositions((prev) => ({ ...prev, ...newPositions }));
       }
+      setApproverPositionsFetched(true);
     };
 
     fetchApproverPositions().catch(() => undefined);
@@ -1210,9 +1323,11 @@ export default function ExportPDFPage({
     if (!spId) return;
     if (!exportData) return;
     if (lineLoading) return;
+    if (requestorAadProfile === null && !!exportData.requester) return;
+    if (!approverPositionsFetched) return;
     autoExportTriggeredRef.current = true;
     handleExportPdf().catch(() => undefined);
-  }, [autoExport, spId, exportData, lineLoading]);
+  }, [autoExport, spId, exportData, lineLoading, requestorAadProfile, approverPositionsFetched]);
 
   const placeToDelivery = exportData?.placeOfDelivery?.trim() || "";
   const FIRST_PAGE_ROWS = 15;
@@ -1381,8 +1496,10 @@ export default function ExportPDFPage({
               cleanDisplayText(approver.approverEmail || "") ||
               "-";
 
-            const aadPosition = cleanDisplayText(approverAadPositions[approverEmailKey] || "");
-            const displayPosition = aadPosition || "-";
+            const resolvedPosition = cleanDisplayText(
+              approverAadPositions[approverEmailKey] || approver.position || ""
+            );
+            const displayPosition = resolvedPosition || "-";
 
             return (
               <div key={`footer-approver-${approver.slot}`}>

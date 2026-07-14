@@ -7,7 +7,7 @@ export interface AwsStockFlow {
   Warehouse_SOH_Qty?: number;
   ProductCode?: string;
   ColourDesc?: string;
-  SizeDesc?: string;
+  SizeCode?: string;
   Original_sp?: number;
 }
 
@@ -65,7 +65,7 @@ export function normalizeAwsFlow(json: unknown): AwsStockFlow | undefined {
   Warehouse_SOH_Qty: Number(o.Warehouse_SOH_Qty || 0),
   ProductCode: String(o.ProductCode || ""),
   ColourDesc: String(o.ColourDesc || ""),
-  SizeDesc: String(o.SizeDesc || ""),
+  SizeCode: String(o.SizeCode || ""),
   Original_sp: Number(o.Original_sp || 0),
 };
 }

@@ -470,14 +470,12 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
                 >
                   Approve
                 </button>
-                {info.showReject && (
-                  <button
-                    className="inline-flex flex-1 min-w-[40px] items-center justify-center px-1.5 py-1.5 rounded-md border border-[#ef4444] bg-[#fff1f2] text-[#dc2626] text-[8px] font-semibold hover:bg-[#dc2626] hover:text-white"
-                    onClick={() => onApproveReject(r, "Reject")}
-                  >
-                    Reject
-                  </button>
-                )}
+                <button
+                  className="inline-flex flex-1 min-w-[40px] items-center justify-center px-1.5 py-1.5 rounded-md border border-[#ef4444] bg-[#fff1f2] text-[#dc2626] text-[8px] font-semibold hover:bg-[#dc2626] hover:text-white"
+                  onClick={() => onApproveReject(r, "Reject")}
+                >
+                  Reject
+                </button>
               </div>
             );
           }
@@ -543,8 +541,6 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
         const loginIsStage2 = !!stage2Email && stage2Email === loginEmail;
         const loginIsCurrentApprover = !!currentApproverEmail && currentApproverEmail === loginEmail;
 
-        const info = getActionInfo(r);
-
         // ── Case A: Login user is Stage 1 ─────────────────────────────────────
         if (loginIsStage1) {
 
@@ -558,14 +554,12 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
                 >
                   Approve
                 </button>
-                {info.showReject && (
-                  <button
-                    className="inline-flex flex-1 min-w-[40px] items-center justify-center px-1.5 py-1.5 rounded-md border border-[#ef4444] bg-[#fff1f2] text-[#dc2626] text-[8px] font-semibold hover:bg-[#dc2626] hover:text-white"
-                    onClick={() => onApproveReject(r, "Reject")}
-                  >
-                    Reject
-                  </button>
-                )}
+                <button
+                  className="inline-flex flex-1 min-w-[40px] items-center justify-center px-1.5 py-1.5 rounded-md border border-[#ef4444] bg-[#fff1f2] text-[#dc2626] text-[8px] font-semibold hover:bg-[#dc2626] hover:text-white"
+                  onClick={() => onApproveReject(r, "Reject")}
+                >
+                  Reject
+                </button>
               </div>
             );
           }
@@ -592,14 +586,12 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
                 >
                   Approve
                 </button>
-                {info.showReject && (
-                  <button
-                    className="inline-flex flex-1 min-w-[40px] items-center justify-center px-1.5 py-1.5 rounded-md border border-[#ef4444] bg-[#fff1f2] text-[#dc2626] text-[8px] font-semibold hover:bg-[#dc2626] hover:text-white"
-                    onClick={() => onApproveReject(r, "Reject")}
-                  >
-                    Reject
-                  </button>
-                )}
+                <button
+                  className="inline-flex flex-1 min-w-[40px] items-center justify-center px-1.5 py-1.5 rounded-md border border-[#ef4444] bg-[#fff1f2] text-[#dc2626] text-[8px] font-semibold hover:bg-[#dc2626] hover:text-white"
+                  onClick={() => onApproveReject(r, "Reject")}
+                >
+                  Reject
+                </button>
               </div>
             );
           }
@@ -613,7 +605,28 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
           );
         }
 
-        // ── Case C: Login user is not in stage 1 or stage 2 ──────────────────
+        // ── Fallback: parsedStages couldn't resolve stage, but CurrentApproverEmail
+        //    points to this user — they should still be able to act.
+        if (loginIsCurrentApprover) {
+          return (
+            <div className="w-full flex items-center justify-center gap-0.5 flex-wrap">
+              <button
+                className="inline-flex flex-1 min-w-[40px] items-center justify-center px-1.5 py-1.5 rounded-md border border-[#12a020] bg-[#e6f2e8] text-[#12a020] text-[8px] font-semibold hover:bg-[#12a020] hover:text-white"
+                onClick={() => onApproveReject(r, "Approve")}
+              >
+                Approve
+              </button>
+              <button
+                className="inline-flex flex-1 min-w-[40px] items-center justify-center px-1.5 py-1.5 rounded-md border border-[#ef4444] bg-[#fff1f2] text-[#dc2626] text-[8px] font-semibold hover:bg-[#dc2626] hover:text-white"
+                onClick={() => onApproveReject(r, "Reject")}
+              >
+                Reject
+              </button>
+            </div>
+          );
+        }
+
+        // ── Case C: Login user is not in any stage ────────────────────────────
         return <div className="text-left text-gray-400">–</div>;
       },
     },

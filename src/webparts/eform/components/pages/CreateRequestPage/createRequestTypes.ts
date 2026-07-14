@@ -164,7 +164,7 @@ export interface FlowItemResponse {
   Barcode?: string;
   ProductCode?: string;
   ColourDesc?: string;
-  SizeDesc?: string;
+  SizeCode?: string;
   Original_sp?: number;
   Warehouse_SOH_Qty?: number;
 }

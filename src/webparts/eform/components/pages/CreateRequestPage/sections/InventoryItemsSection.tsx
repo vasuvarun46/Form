@@ -7,7 +7,7 @@ export interface ManualProduct {
   Warehouse_SOH_Qty: number;
   ProductCode?: string;
   ColourDesc?: string;
-  SizeDesc?: string;
+  SizeCode?: string;
   Original_sp?: number;
 }
 
@@ -298,6 +298,11 @@ export default function InventoryItemsSection(
                       onChange={(v: string | number) => updateQty(idx, v)}
                         disabled={inventoryMode === "excel"}
                     />
+                    {inventoryMode === "manual" && itemErrors[idx] && (
+                      <div className="mt-1 text-[10px] text-red-600">
+                        {itemErrors[idx]}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-center">
                     {inventoryMode === "manual" && (<button
@@ -306,13 +311,6 @@ export default function InventoryItemsSection(
                     >
                       Remove
                     </button>)}
-
-
-                    {itemErrors[idx] && (
-                      <div className="mt-1 text-[10px] text-red-600">
-                        {itemErrors[idx]}
-                      </div>
-                    )}
                   </td>
                 </tr>
               ))}

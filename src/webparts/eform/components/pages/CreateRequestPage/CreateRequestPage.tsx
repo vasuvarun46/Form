@@ -360,7 +360,7 @@ export default function CreateRequestPage({
       if (wanted > max) {
         setItemErrors((old) => ({
           ...old,
-          [index]: `Quantity must be between 1 and 999 and not exceed available stock (${max} pcs)`,
+          [index]: `Quantity must be 1–999 and not exceed available stock (${max} pcs).`,
         }));
       } else if (!isZeroInput) {
         setItemErrors((old) => {
@@ -474,10 +474,10 @@ export default function CreateRequestPage({
       // ✅ Out of stock — still show popup, but with error and disabled Add
       if (stock <= 0) {
         setSkuSearchError("");
-        setManualMaxStock(0);
+        setManualMaxStock(stock);
         setManualProduct(flow);
         setManualQty(1);
-        setManualQtyError(`Quantity must be 1-999 and not exceed available stock (0 pcs).`);
+        setManualQtyError(`Quantity must be 1–999 and not exceed available stock (${stock} pcs).`);
         setManualPopupOpen(true);
         return;
       }
@@ -514,7 +514,7 @@ export default function CreateRequestPage({
     const barcode = String(manualProduct.Barcode || "").trim();
     const productCode = String(manualProduct.ProductCode || "").trim();
     const color = String(manualProduct.ColourDesc || "-").trim();
-    const size = String(manualProduct.SizeDesc || "-").trim();
+    const size = String(manualProduct.SizeCode || "-").trim();
     const unitPrice = Number(manualProduct.Original_sp || 0);
     const stock = Number(manualProduct.Warehouse_SOH_Qty ?? 0);
     const qty = Number(manualQty || 0);
@@ -534,7 +534,7 @@ export default function CreateRequestPage({
     // qty must be 1..999
     if (!Number.isFinite(qty) || qty < 1 || qty > 999) {
       setManualQtyError(
-        `Quantity must be between 1 and 999 and not exceed available stock (${stock} pcs)`
+        `Quantity must be 1–999 and not exceed available stock (${stock} pcs).`
       );
       return;
     }
@@ -550,7 +550,7 @@ export default function CreateRequestPage({
     // qty > stock
     if (qty > stock) {
       setManualQtyError(
-        `Quantity must be between 1 and 999 and not exceed available stock (${stock} pcs)`
+        `Quantity must be 1–999 and not exceed available stock (${stock} pcs).`
       );
       return;
     }
@@ -705,24 +705,42 @@ export default function CreateRequestPage({
         setFieldErrors({});
 
         // 🔹 4. Set Items
-        setItems(
-          spRows.map((it, i) => ({
-            no: i + 1,
-            sku: String(it.SKUCode || "").trim(),
-            productCode: it.ProductDescription || "",
-            color: it.Color || "-",
-            size: it.Size || "-",
-            unitPrice: Number(it.UnitPrice || 0),
-            qty: Number(it.Quantity || 0),
-            maxStock: Number(it.StockAvailability ?? 0),
-          }))
-        );
+        const loadedItems = spRows.map((it, i) => ({
+          no: i + 1,
+          sku: String(it.SKUCode || "").trim(),
+          productCode: it.ProductDescription || "",
+          color: it.Color || "-",
+          size: it.Size || "-",
+          unitPrice: Number(it.UnitPrice || 0),
+          qty: Number(it.Quantity || 0),
+          maxStock: Number(it.StockAvailability ?? 0),
+        }));
+        setItems(loadedItems);
 
         // 🔹 5. Mode
         const draftMode: InventoryMode =
           header.EntryMode === "Excel" ? "excel" : "manual";
 
         setInventoryMode(draftMode);
+
+        // 🔹 4b. Re-flag any rows saved with an invalid/out-of-stock quantity
+        // (e.g. saved as draft with qty 0) so the error shows immediately on reopen
+        // instead of only after the user touches the quantity stepper.
+        if (draftMode === "manual") {
+          const reloadedErrors: ItemRowErrors = {};
+          loadedItems.forEach((row, idx) => {
+            const qty = row.qty;
+            const max = row.maxStock != null ? Number(row.maxStock) : 999999;
+            if (qty < 1 || qty > 999) {
+              reloadedErrors[idx] = "0 is not allowed. Quantity must be between 1 and 999.";
+            } else if (max <= 0) {
+              reloadedErrors[idx] = `Quantity must be 1–999 and not exceed available stock (${max} pcs).`;
+            } else if (qty > max) {
+              reloadedErrors[idx] = `Quantity must be 1–999 and not exceed available stock (${max} pcs).`;
+            }
+          });
+          setItemErrors(reloadedErrors);
+        }
 
         // 🔹 6. Excel attachment logic (FIXED)
         if (draftMode === "excel" && spRows.length > 0) {
@@ -1248,6 +1266,7 @@ React.useEffect(() => {
     // Manual mode live stock validation
     if (inventoryMode === "manual") {
       const nextItemErrors: ItemRowErrors = {};
+      const stockUpdates: Record<number, number> = {};
       let hasManualStockIssue = false;
 
       for (let i = 0; i < items.length; i++) {
@@ -1266,26 +1285,40 @@ React.useEffect(() => {
           }
 
           const stock = Number(flow.Warehouse_SOH_Qty ?? 0);
+          stockUpdates[i] = stock;
 
           if (stock <= 0) {
-            nextItemErrors[i] = `SKU "${sku}" is out of stock.`;
+            nextItemErrors[i] = `Quantity must be 1–999 and not exceed available stock (${stock} pcs).`;
             hasManualStockIssue = true;
             continue;
           }
 
           if (reqQty < 1 || reqQty > 999 || reqQty > stock) {
             nextItemErrors[i] =
-              `Quantity must be 1-999 and not exceed available stock (${stock} pcs).`;
+              `Quantity must be 1–999 and not exceed available stock (${stock} pcs).`;
             hasManualStockIssue = true;
           }
         } catch {
-          nextItemErrors[i] = `Unable to validate stock for SKU "${sku}".`;
-          hasManualStockIssue = true;
+          // Live stock check unavailable (no flow URL or API unreachable) —
+          // fall back to the stock value saved when the item was added.
+          const savedStock = Number(items[i].maxStock ?? 0);
+          stockUpdates[i] = savedStock;
+          if (savedStock <= 0 || reqQty < 1 || reqQty > 999 || reqQty > savedStock) {
+            nextItemErrors[i] = `Quantity must be 1–999 and not exceed available stock (${savedStock} pcs).`;
+            hasManualStockIssue = true;
+          }
         }
       }
 
       if (hasManualStockIssue) {
         setItemErrors((prev) => ({ ...prev, ...nextItemErrors }));
+        if (Object.keys(stockUpdates).length > 0) {
+          setItems((prev) =>
+            prev.map((item, j) =>
+              j in stockUpdates ? { ...item, maxStock: stockUpdates[j] } : item
+            )
+          );
+        }
         setManualStockPopupOpen(true);
         setSubmitError("");
         return false;

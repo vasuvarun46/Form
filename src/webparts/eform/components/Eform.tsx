@@ -179,15 +179,15 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
       };
       const url =
         `${webUrl}/_api/web/lists/getbytitle('InventoryRequests')/items(${requestId})` +
-        `?$select=Id,Title,WorkflowStatus,CurrentApproverEmail,ApprovalChainJSON,Requester/EMail` +
-        `&$expand=Requester`;
+        `?$select=Id,Title,WorkflowStatus,CurrentApproverEmail,ApprovalChainJSON,Requester/EMail,CurrentApprover/EMail` +
+        `&$expand=Requester,CurrentApprover`;
       context.spHttpClient
         .get(url, SPHttpClient.configurations.v1)
         .then((res) => {
           if (!res.ok) throw new Error("Item not found");
           return res.json();
         })
-        .then((item: { Id: number; Title: string; WorkflowStatus?: string; CurrentApproverEmail?: string; ApprovalChainJSON?: string; Requester?: { EMail?: string } }) => {
+        .then((item: { Id: number; Title: string; WorkflowStatus?: string; CurrentApproverEmail?: string; CurrentApprover?: { EMail?: string }; ApprovalChainJSON?: string; Requester?: { EMail?: string } }) => {
           if (transactionId && item.Title !== transactionId) {
             setRoute("home");
             setDlValidating(false);
@@ -218,6 +218,9 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
             if (isActionable) {
               const levels = chain.allApprovalLevels || [];
               const hasMultiple = !!chain.hasMultipleApprovals;
+              // Person field email is more reliable than the plain-text CurrentApproverEmail
+              const personFieldEmail = String(item.CurrentApprover?.EMail || "").trim().toLowerCase();
+              const currentEmail = personFieldEmail || String(item.CurrentApproverEmail || "").trim().toLowerCase();
               if (!hasMultiple) {
                 const canApprove = levels.some(
                   (l) => String(l.approverEmail || "").toLowerCase().trim() === myEmail && l.canApproveRequest === true
@@ -225,14 +228,19 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
                 if (canApprove) {
                   actionInfo = { canAct: true, showReject: true };
                 } else {
-                  const isWaiting = levels.some(
-                    (l) => String(l.approverEmail || "").toLowerCase().trim() === myEmail && l.canApproveRequest === false
-                  );
-                  actionInfo = { canAct: false, showReject: false, isApproverWaiting: isWaiting };
+                  // Fallback: SP's CurrentApprover Person field is most reliable — covers C2 when
+                  // allApprovalLevels canApproveRequest hasn't been updated by PA yet.
+                  if (currentEmail && currentEmail === myEmail) {
+                    actionInfo = { canAct: true, showReject: true };
+                  } else {
+                    const isWaiting = levels.some(
+                      (l) => String(l.approverEmail || "").toLowerCase().trim() === myEmail && l.canApproveRequest === false
+                    );
+                    actionInfo = { canAct: false, showReject: false, isApproverWaiting: isWaiting };
+                  }
                 }
               } else {
-                // Multi-level — use SharePoint CurrentApproverEmail column (updated by workflow when C1 approves)
-                const currentEmail = String(item.CurrentApproverEmail || "").trim().toLowerCase();
+                // Multi-level — use Person field email (updated by workflow when C1 approves)
                 if (currentEmail && currentEmail === myEmail) {
                   actionInfo = { canAct: true, showReject: true };
                 } else {
@@ -312,8 +320,8 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
     // Fetch the record including ApprovalChainJSON, WorkflowStatus and requester email
     const url =
       `${webUrl}/_api/web/lists/getbytitle('InventoryRequests')/items(${requestId})` +
-      `?$select=Id,Title,WorkflowStatus,CurrentApproverEmail,ApprovalChainJSON,Requester/EMail` +
-      `&$expand=Requester`;
+      `?$select=Id,Title,WorkflowStatus,CurrentApproverEmail,ApprovalChainJSON,Requester/EMail,CurrentApprover/EMail` +
+      `&$expand=Requester,CurrentApprover`;
 
     context.spHttpClient
       .get(url, SPHttpClient.configurations.v1)
@@ -326,6 +334,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
         Title: string;
         WorkflowStatus?: string;
         CurrentApproverEmail?: string;
+        CurrentApprover?: { EMail?: string };
         ApprovalChainJSON?: string;
         Requester?: { EMail?: string };
       }) => {
@@ -373,6 +382,9 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
           if (isActionable) {
             const levels = chain.allApprovalLevels || [];
             const hasMultiple = !!chain.hasMultipleApprovals;
+            // Person field email is more reliable than the plain-text CurrentApproverEmail
+            const personFieldEmail = String(item.CurrentApprover?.EMail || "").trim().toLowerCase();
+            const currentEmail = personFieldEmail || String(item.CurrentApproverEmail || "").trim().toLowerCase();
 
             if (!hasMultiple) {
               // Single approver — show if canApproveRequest=true for this user
@@ -382,14 +394,19 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
               if (canApprove) {
                 actionInfo = { canAct: true, showReject: true };
               } else {
-                const isWaiting = levels.some(
-                  (l) => String(l.approverEmail || "").toLowerCase().trim() === myEmail && l.canApproveRequest === false
-                );
-                actionInfo = { canAct: false, showReject: false, isApproverWaiting: isWaiting };
+                // Fallback: SP's CurrentApprover Person field is most reliable — covers C2 when
+                // allApprovalLevels canApproveRequest hasn't been updated by PA yet.
+                if (currentEmail && currentEmail === myEmail) {
+                  actionInfo = { canAct: true, showReject: true };
+                } else {
+                  const isWaiting = levels.some(
+                    (l) => String(l.approverEmail || "").toLowerCase().trim() === myEmail && l.canApproveRequest === false
+                  );
+                  actionInfo = { canAct: false, showReject: false, isApproverWaiting: isWaiting };
+                }
               }
             } else {
-              // Multi-level — use SharePoint CurrentApproverEmail column (updated by workflow)
-              const currentEmail = String(item.CurrentApproverEmail || "").trim().toLowerCase();
+              // Multi-level — use Person field email (updated by workflow when C1 approves)
               if (currentEmail && currentEmail === myEmail) {
                 actionInfo = { canAct: true, showReject: true };
               } else {
