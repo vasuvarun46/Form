@@ -168,22 +168,18 @@ export default function AllRequestPage(
   };
 
   const [costCenterOptions, setCostCenterOptions] = React.useState<string[]>([]);
-  React.useEffect(() => {
-    if (rows.length === 0) return;
-    setCostCenterOptions(prev => {
-      const seen = new Set(prev);
-      let changed = false;
-      for (const r of rows) {
-        const cc = String(r.costCenter || "").trim();
-        if (cc && cc !== "-" && !seen.has(cc)) {
-          seen.add(cc);
-          changed = true;
-        }
-      }
-      if (!changed) return prev;
-      return Array.from(seen).sort((a, b) => a.localeCompare(b));
-    });
-  }, [rows]);
+  const loadCostCenterOptions = async (): Promise<void> => {
+    const siteUrl = context.pageContext.web.absoluteUrl;
+    const response = await context.spHttpClient.get(
+      `${siteUrl}/_api/web/lists/getbytitle('CostCenterMaster')/items?$select=Title&$filter=IsActive eq 1&$orderby=Title asc`,
+      SPHttpClient.configurations.v1
+    );
+    const json = await response.json();
+    const titles: string[] = (Array.isArray(json?.value) ? json.value : []).map(
+      (item: { Title?: string }) => String(item?.Title || "")
+    ).filter(Boolean);
+    setCostCenterOptions(dedupeLabels(titles).sort((a, b) => a.localeCompare(b)));
+  };
 
   /* =====================================================
      FILTERING LOGIC (UNCHANGED)
@@ -502,6 +498,7 @@ export default function AllRequestPage(
   React.useEffect(() => {
     loadStatusOptions().catch(() => undefined);
     loadPurposeOptions().catch(() => undefined);
+    loadCostCenterOptions().catch(() => undefined);
   }, []);
 
   // ✅ FIXED — no user filter, counts ALL records across all users
@@ -809,6 +806,7 @@ export default function AllRequestPage(
       canExport={canExport}
       showDisabledExport={props.permissions?.viewExportAllReport === true}
       countIncreased={countIncreased}
+      onResetSelection={() => { setSelectedIds([]); setManualSelectedIds([]); }}
 
     />
   );

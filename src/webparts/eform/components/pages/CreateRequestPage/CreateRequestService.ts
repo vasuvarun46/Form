@@ -556,12 +556,26 @@ export const getItemsArray = <TItem,>(data: ODataResponse<TItem>): TItem[] => {
   return [];
 };
 
+const spErrorMessage = async (res: SPHttpClientResponse): Promise<string> => {
+  const txt = await res.text();
+  // SharePoint returns an HTML page for transient errors (503, throttling, etc.).
+  // Displaying that raw HTML confuses users — extract a clean message instead.
+  if (txt && (txt.trim().startsWith("<!") || txt.trim().startsWith("<html"))) {
+    return `SharePoint request failed (HTTP ${res.status}). This is a temporary issue — please try again in a few minutes.`;
+  }
+  try {
+    const json = JSON.parse(txt);
+    const msg = json?.error?.message?.value || json?.error?.message || "";
+    if (msg) return msg;
+  } catch { /* not JSON */ }
+  return txt || res.statusText || `HTTP ${res.status}`;
+};
+
 export const spGet = async <T,>(context: WebPartContext, apiUrl: string): Promise<T> => {
   const res: SPHttpClientResponse = await context.spHttpClient.get(apiUrl, SPHttpClient.configurations.v1);
 
   if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(txt || res.statusText);
+    throw new Error(await spErrorMessage(res));
   }
   return (await res.json()) as T;
 };
@@ -584,8 +598,7 @@ export const spCreateItem = async <TBody extends object>(
   });
 
   if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(txt || res.statusText);
+    throw new Error(await spErrorMessage(res));
   }
   return (await res.json()) as { Id: number };
 };
@@ -611,8 +624,7 @@ export const spUpdateItem = async <TBody extends object>(
   });
 
   if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(txt || res.statusText);
+    throw new Error(await spErrorMessage(res));
   }
 };
 

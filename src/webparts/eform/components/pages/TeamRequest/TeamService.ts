@@ -474,6 +474,19 @@ export function useTeamRequestsLogic(
         .map((x: any) => String(x?.Title || "").trim())
         .filter(Boolean);
       setPurposeOptions(dedupeLabels(purposeTitles));
+
+      const costCenterUrl =
+        `${siteUrl}/_api/web/lists/getbytitle('CostCenterMaster')/items` +
+        `?$select=Title,IsActive` +
+        `&$filter=IsActive eq 1` +
+        `&$orderby=Title asc`;
+
+      const costCenterJson = await spGetJson(context, costCenterUrl);
+
+      const costCenterTitles: string[] = (costCenterJson?.value || [])
+        .map((x: any) => String(x?.Title || "").trim())
+        .filter(Boolean);
+      setCostCenterOptions(dedupeLabels(costCenterTitles).sort((a, b) => a.localeCompare(b)));
     },
     [context, siteUrl]
   );
@@ -798,7 +811,8 @@ export function useTeamRequestsLogic(
 
       if (
         statusOptions.length === 0 ||
-        purposeOptions.length === 0
+        purposeOptions.length === 0 ||
+        costCenterOptions.length === 0
       ) {
         await Promise.all([loadMasterOptions(p), loadStatusChoices()]);
       }
@@ -835,22 +849,6 @@ export function useTeamRequestsLogic(
   const filteredRows = React.useMemo(() => [...rows], [rows]);
 
   const [costCenterOptions, setCostCenterOptions] = React.useState<string[]>([]);
-  React.useEffect(() => {
-    if (rows.length === 0) return;
-    setCostCenterOptions(prev => {
-      const seen = new Set(prev);
-      let changed = false;
-      for (const r of rows) {
-        const cc = String(r.costCenter || "").trim();
-        if (cc && cc !== "-" && !seen.has(cc)) {
-          seen.add(cc);
-          changed = true;
-        }
-      }
-      if (!changed) return prev;
-      return Array.from(seen).sort((a, b) => a.localeCompare(b));
-    });
-  }, [rows]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
 

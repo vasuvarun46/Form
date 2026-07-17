@@ -81,6 +81,7 @@ type Props = {
   showDisabledExport: boolean;
   manualSelectedCount: number;
   countIncreased: boolean;
+  onResetSelection: () => void;
 };
 
 export default function AllRequestRender({
@@ -131,7 +132,8 @@ export default function AllRequestRender({
   canExport,
   showDisabledExport,
   manualSelectedCount,
-  countIncreased
+  countIncreased,
+  onResetSelection
 }: Props): JSX.Element {
 
   const hasActiveFilters =
@@ -227,11 +229,11 @@ export default function AllRequestRender({
                 costCenterSelected={costCenterFilter}
                 expectedFrom={expectedFrom}
                 expectedTo={expectedTo}
-                setStatusSelected={(v) => { setStatusFilter(v); onResetPage(); }}
-                setPurposeSelected={(v) => { setPurposeFilter(v); onResetPage(); }}
-                setCostCenterSelected={(v) => { setCostCenterFilter(v); onResetPage(); }}
-                setExpectedFrom={(v) => { setExpectedFrom(v); onResetPage(); }}
-                setExpectedTo={(v) => { setExpectedTo(v); onResetPage(); }}
+                setStatusSelected={(v) => { setStatusFilter(v); onResetPage(); onResetSelection(); }}
+                setPurposeSelected={(v) => { setPurposeFilter(v); onResetPage(); onResetSelection(); }}
+                setCostCenterSelected={(v) => { setCostCenterFilter(v); onResetPage(); onResetSelection(); }}
+                setExpectedFrom={(v) => { setExpectedFrom(v); onResetPage(); onResetSelection(); }}
+                setExpectedTo={(v) => { setExpectedTo(v); onResetPage(); onResetSelection(); }}
                 onClearAll={() => {
                   setStatusFilter([]);
                   setPurposeFilter([]);
@@ -239,6 +241,7 @@ export default function AllRequestRender({
                   setExpectedFrom("");
                   setExpectedTo("");
                   onResetPage();
+                  onResetSelection();
                 }}
                 showClearAll={hasActiveFilters}
                 SelectBox={SelectBox}

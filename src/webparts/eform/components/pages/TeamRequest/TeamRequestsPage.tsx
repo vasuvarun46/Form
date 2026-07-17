@@ -707,17 +707,19 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
                     costCenterSelected={costCenterSelected}
                     expectedFrom={expectedFrom}
                     expectedTo={expectedTo}
-                    setStatusSelected={setStatusSelected}
-                    setPurposeSelected={setPurposeSelected}
-                    setCostCenterSelected={setCostCenterSelected}
-                    setExpectedFrom={setExpectedFrom}
-                    setExpectedTo={setExpectedTo}
+                    setStatusSelected={(v) => { setStatusSelected(v); setSelectedIds([]); setManualSelectedIds([]); }}
+                    setPurposeSelected={(v) => { setPurposeSelected(v); setSelectedIds([]); setManualSelectedIds([]); }}
+                    setCostCenterSelected={(v) => { setCostCenterSelected(v); setSelectedIds([]); setManualSelectedIds([]); }}
+                    setExpectedFrom={(v) => { setExpectedFrom(v); setSelectedIds([]); setManualSelectedIds([]); }}
+                    setExpectedTo={(v) => { setExpectedTo(v); setSelectedIds([]); setManualSelectedIds([]); }}
                     onClearAll={() => {
                       setStatusSelected([]);
                       setPurposeSelected([]);
                       setCostCenterSelected([]);
                       setExpectedFrom("");
                       setExpectedTo("");
+                      setSelectedIds([]);
+                      setManualSelectedIds([]);
                     }}
                     showClearAll={hasActiveFilters}
                     SelectBox={SelectBox}

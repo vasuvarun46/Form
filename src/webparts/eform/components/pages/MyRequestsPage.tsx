@@ -813,21 +813,15 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
 
   const [costCenterOptions, setCostCenterOptions] = React.useState<string[]>([]);
   React.useEffect(() => {
-    if (allRows.length === 0) return;
-    setCostCenterOptions(prev => {
-      const seen = new Set(prev);
-      let changed = false;
-      for (const r of allRows) {
-        const cc = String(r.costCenter || "").trim();
-        if (cc && cc !== "-" && !seen.has(cc)) {
-          seen.add(cc);
-          changed = true;
-        }
-      }
-      if (!changed) return prev;
-      return Array.from(seen).sort((a, b) => a.localeCompare(b));
-    });
-  }, [allRows]);
+    const siteUrl = context.pageContext.web.absoluteUrl;
+    context.spHttpClient.get(
+      `${siteUrl}/_api/web/lists/getbytitle('CostCenterMaster')/items?$top=5000&$select=Title&$filter=IsActive eq 1&$orderby=Title asc`,
+      SPHttpClient.configurations.v1
+    ).then(r => r.json()).then(json => {
+      const titles: string[] = (json?.value || []).map((x: { Title?: string }) => String(x?.Title || "")).filter(Boolean);
+      setCostCenterOptions(dedupeLabels(titles).sort((a, b) => a.localeCompare(b)));
+    }).catch(() => undefined);
+  }, []);
 
   React.useEffect(() => {
     const siteUrl = context.pageContext.web.absoluteUrl;
@@ -978,11 +972,11 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
                     costCenterSelected={costCenterSelected}
                     expectedFrom={expectedFrom}
                     expectedTo={expectedTo}
-                    setStatusSelected={(v) => { setStatusSelected(v); setPageIndex(0); }}
-                    setPurposeSelected={(v) => { setPurposeSelected(v); setPageIndex(0); }}
-                    setCostCenterSelected={(v) => { setCostCenterSelected(v); setPageIndex(0); }}
-                    setExpectedFrom={(v) => { setExpectedFrom(v); setPageIndex(0); }}
-                    setExpectedTo={(v) => { setExpectedTo(v); setPageIndex(0); }}
+                    setStatusSelected={(v) => { setStatusSelected(v); setPageIndex(0); setSelectedIds([]); setManualSelectedIds([]); }}
+                    setPurposeSelected={(v) => { setPurposeSelected(v); setPageIndex(0); setSelectedIds([]); setManualSelectedIds([]); }}
+                    setCostCenterSelected={(v) => { setCostCenterSelected(v); setPageIndex(0); setSelectedIds([]); setManualSelectedIds([]); }}
+                    setExpectedFrom={(v) => { setExpectedFrom(v); setPageIndex(0); setSelectedIds([]); setManualSelectedIds([]); }}
+                    setExpectedTo={(v) => { setExpectedTo(v); setPageIndex(0); setSelectedIds([]); setManualSelectedIds([]); }}
                     onClearAll={() => {
                       setStatusSelected([]);
                       setPurposeSelected([]);
@@ -990,6 +984,8 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
                       setExpectedFrom("");
                       setExpectedTo("");
                       setPageIndex(0);
+                      setSelectedIds([]);
+                      setManualSelectedIds([]);
                     }}
                     showClearAll={hasActiveFilters}
                     SelectBox={SelectBox}
