@@ -140,10 +140,10 @@ function toDisplayStatus(status: string): string {
     .toLowerCase()
     .replace(/\s+/g, " ");
 
-  const isInApproval =
-    key === "pending" || key === "in approval" || key === "in-approval";
+  const isInApproval = key === "in approval" || key === "in-approval";
 
   if (key === "submitted" || isInApproval) return "Submitted";
+  if (key === "pending") return "Pending";
   if (key === "approved") return "Approved";
   if (key === "rejected") return "Rejected";
   if (key === "draft") return "Draft";

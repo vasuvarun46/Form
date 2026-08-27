@@ -202,8 +202,7 @@ export async function buildApprovalChainFromLists(
   const userUrl =
     `${siteUrl}/_api/web/lists/getbytitle('EForm%20Users')/items` +
     `?$top=1` +
-    `&$select=Id,Title,Email,Jobposition,Department/Title,${emailFieldNames}` +
-    `&$expand=Department` +
+    `&$select=Id,Title,Email,${emailFieldNames}` +
     `&$filter=Email eq '${escapedEmail}'`;
 
   const userRes = await context.spHttpClient.get(userUrl, SPHttpClient.configurations.v1);
@@ -741,7 +740,7 @@ export const getUserDataFromSharePoint = async (
     ]);
 
     // FieldTypeKind 7 = Lookup column
-    const regularFields: string[] = ["Id", "Title", "Email", "Jobposition"];
+    const regularFields: string[] = ["Id", "Title", "Email"];
     const lookupFields: string[] = [];
     const lookupSelectParts: string[] = [];
 
@@ -806,6 +805,7 @@ export type AadUserProfile = {
   displayName: string;
   jobTitle: string;
   department: string;
+  employeeId: string;
 };
 
 type SearchResponse = {
@@ -822,7 +822,7 @@ export const fetchUserAadProfile = async (
   context: WebPartContext,
   email: string
 ): Promise<AadUserProfile> => {
-  const empty: AadUserProfile = { displayName: "", jobTitle: "", department: "" };
+  const empty: AadUserProfile = { displayName: "", jobTitle: "", department: "", employeeId: "" };
   try {
     const siteUrl = context.pageContext.web.absoluteUrl;
     const safeEmail = encodeURIComponent(email.toLowerCase().trim());
@@ -832,7 +832,7 @@ export const fetchUserAadProfile = async (
       `${siteUrl}/_api/search/query` +
       `?querytext='WorkEmail:${safeEmail}'` +
       `&sourceid='B09A7990-05EA-4AF9-81EF-EDFAB16C4E31'` +
-      `&selectproperties='PreferredName,JobTitle,Department'` +
+      `&selectproperties='PreferredName,JobTitle,Department,EmployeeID'` +
       `&rowlimit=1`;
 
     const res = await context.spHttpClient.get(url, SPHttpClient.configurations.v1, {
@@ -849,6 +849,32 @@ export const fetchUserAadProfile = async (
       displayName: get("PreferredName") || get("DisplayName") || "",
       jobTitle: get("JobTitle") || "",
       department: get("Department") || "",
+      employeeId: get("EmployeeID") || "",
+    };
+  } catch {
+    return empty;
+  }
+};
+
+/* =========================================================
+   fetchCurrentUserFromGraph
+   Uses the approved User.Read.All Graph permission to call
+   GET /me and return the user's actual Entra ID attributes.
+   This is more reliable than People Search for EmployeeID.
+========================================================= */
+export const fetchCurrentUserFromGraph = async (
+  context: WebPartContext
+): Promise<AadUserProfile> => {
+  const empty: AadUserProfile = { displayName: "", jobTitle: "", department: "", employeeId: "" };
+  try {
+    const graphClient = await context.msGraphClientFactory.getClient("3");
+    const me: { displayName?: string; jobTitle?: string; department?: string; employeeId?: string } =
+      await graphClient.api("/me").select("displayName,jobTitle,department,employeeId").get();
+    return {
+      displayName: String(me.displayName || ""),
+      jobTitle:    String(me.jobTitle    || ""),
+      department:  String(me.department  || ""),
+      employeeId:  String(me.employeeId  || ""),
     };
   } catch {
     return empty;
@@ -857,7 +883,7 @@ export const fetchUserAadProfile = async (
 
 export const loadMasters = async (
   context: WebPartContext,
-  deptId: number | null,
+  deptName: string | null,
   setPurposes: (v: PurposeOption[]) => void,
   setCostCenters: (v: CostCenterOption[]) => void
 ): Promise<void> => {
@@ -868,12 +894,13 @@ export const loadMasters = async (
     `${siteUrl}/_api/web/lists/getbytitle('PurposeMaster')/items` +
     `?$top=5000&$select=Id,Title,IsActive&$filter=IsActive eq 1&$orderby=Title`;
 
+  const safeDeptName = (deptName || "").replace(/'/g, "''").replace(/&/g, "%26");
   const costUrl =
     `${siteUrl}/_api/web/lists/getbytitle('CostCenterMaster')/items` +
     `?$top=5000` +
     `&$select=Id,Title,${costCenterInternalName},IsActive,Department/Id,Department/Title` +
     `&$expand=Department` +
-    `&$filter=IsActive eq 1 and Department/Id eq ${deptId}` +
+    `&$filter=IsActive eq 1 and Department/Title eq '${safeDeptName}'` +
     `&$orderby=Title`;
 
   type PurposeItem = { Id: number; Title: string; IsActive: boolean };
@@ -1398,7 +1425,8 @@ export const createExcelPendingRequest = async (
   usage: IUsageState,
   _totalAmount: number,
   _totalQty: number,
-  uploadFileName?: string
+  uploadFileName?: string,
+  departmentName?: string
 ): Promise<number> => {
 
 
@@ -1469,7 +1497,7 @@ export const createExcelPendingRequest = async (
     EmployeeID: userData?.[0]?.EmployeeID || "UNKNOWN",
     RequesterEmail: context.pageContext.user.email,
     JobPosition: userData?.[0]?.Jobposition || "",
-    DepartmentId: userData?.[0]?.Department?.Id || undefined,
+    Departments: departmentName || "",
     PurposeId: purposeId,
     CostCenterId: costCenterId,
 

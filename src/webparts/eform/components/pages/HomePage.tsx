@@ -128,6 +128,7 @@ export default function HomePage({ onCreateRequest, onGoToForm, permissions }: P
               <button
                 type="button"
                 className="bg-white text-black px-6 py-2 rounded-md text-sm font-semibold hover:bg-black hover:text-white transition-colors"
+                onClick={() => window.open("https://suparaco.sharepoint.com/sites/GQConnect", "_blank")}
               >
                 Let&apos;s connect
               </button>

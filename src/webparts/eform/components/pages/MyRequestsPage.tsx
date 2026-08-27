@@ -76,7 +76,7 @@ interface InventoryRequestSPItem {
   CurrentApprover?: { Title: string };
   Purpose?: { Title: string };
   CostCenter?: { Title: string };
-  Department?: { Title: string };
+  Departments?: string;
   PurposeDetails?: string;
   RequestSubmittedOn?: string;
   FinalDecisionDate?: string;
@@ -459,8 +459,8 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
         `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items` +
         `?$top=5000&$select=Id,Title,RequestNumber,WorkflowStatus,TotalQuantity,TotalAmount,Modified,` +
         `PurposeDetails,RequestCreatedOn,RequestSubmittedOn,FinalDecisionDate,ApprovedDates,ExpectedDeliveryDate,ApproverNames,MultipleApproverData,` +
-        `Requester/Title,Requester/EMail,CurrentApprover/Title,Purpose/Title,CostCenter/Title,Department/Title` +
-        `&$expand=Requester,CurrentApprover,Purpose,CostCenter,Department` +
+        `Requester/Title,Requester/EMail,CurrentApprover/Title,Purpose/Title,CostCenter/Title,Departments` +
+        `&$expand=Requester,CurrentApprover,Purpose,CostCenter` +
         `&$filter=${clauses.join(" and ")}` +
         `&$orderby=Id desc`;
 
@@ -503,7 +503,7 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
           requestor: it.Requester?.Title || "",
           approver: it.ApproverNames || "",
           multipleApproverData: it.MultipleApproverData,
-          department: it.Department?.Title || "",
+          department: it.Departments || "",
           purpose: it.Purpose?.Title || "",
           purposeDetail: it.PurposeDetails || "",
           costCenter: it.CostCenter?.Title || "",

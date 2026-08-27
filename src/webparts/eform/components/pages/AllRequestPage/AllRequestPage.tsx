@@ -367,7 +367,7 @@ export default function AllRequestPage(
           "Id",
           "RequestNumber",
           "Title",
-          "Department/Title",
+          "Departments",
           "WorkflowStatus",
           "TotalQuantity",
           "ApproverNames",
@@ -385,7 +385,7 @@ export default function AllRequestPage(
           "MultipleApproverData",
         ].join(",") +
         `&$expand=` +
-        ["Requester", "CurrentApprover", "Purpose", "CostCenter", "Department"].join(",");
+        ["Requester", "CurrentApprover", "Purpose", "CostCenter"].join(",");
 
       // ✅ Fetch all pages using @odata.nextLink
       const reqItems: InventoryRequestSPItem[] = [];
@@ -444,7 +444,7 @@ export default function AllRequestPage(
           requestor: it.Requester?.Title ?? "-",
           approver: it.ApproverNames,
           multipleApproverData: it.MultipleApproverData,
-          department: it.Department?.Title ?? "-", // ✅ lookup title
+          department: String(it.Departments || "-"),
           purpose: it.Purpose?.Title ?? "-",
           PurposeDetails: it.PurposeDetails ?? "-",
           costCenter: it.CostCenter?.Title ?? "-",

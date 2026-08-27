@@ -103,7 +103,7 @@ export interface InventoryRequestsCreateBody {
   EmployeeID?: string;
   RequesterEmail?: string;
   JobPosition?: string;
-  Department?: { Id: number; Title: string };
+  Departments?: string;
 
   ApprovalType?: string;
 

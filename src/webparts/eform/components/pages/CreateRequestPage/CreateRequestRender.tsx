@@ -478,7 +478,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
           {draftLoading && (
             <Loading />
           )}
-          <GeneralInfoSection userData={userData} card={card} aadProfile={aadProfile} />
+          <GeneralInfoSection userData={userData} card={card} aadProfile={aadProfile} currentUserEmail={context.pageContext.user.email} />
           <UsageInfoSection
             usage={usage}
             setField={setUsageField}
@@ -1429,7 +1429,8 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                           usage,
                           0,
                           0,
-                          excelFileName
+                          excelFileName,
+                          aadProfile?.department
                         );
 
                         onNavigate("my", {

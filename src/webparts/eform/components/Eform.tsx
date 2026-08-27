@@ -600,23 +600,13 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
   }, [context]);
 
   const getCurrentUserPosition = React.useCallback(async (): Promise<string> => {
-    const webUrl = context.pageContext.web.absoluteUrl;
-    const userEmail = String(context.pageContext.user.email || "").replace(/'/g, "''");
-
-    const url =
-      `${webUrl}/_api/web/lists/getbytitle('EForm%20Users')/items` +
-      `?$top=1` +
-      `&$select=Jobposition` +
-      `&$filter=Email eq '${userEmail}'`;
-
-    const res = await context.spHttpClient.get(
-      url,
-      SPHttpClient.configurations.v1
-    );
-    if (!res.ok) return "Unknown";
-
-    const json = await res.json() as { value?: { Jobposition?: string }[] };
-    return String(json?.value?.[0]?.Jobposition || "Unknown");
+    try {
+      const graphClient = await context.msGraphClientFactory.getClient("3");
+      const me: { jobTitle?: string } = await graphClient.api("/me").select("jobTitle").get();
+      return String(me.jobTitle || "");
+    } catch {
+      return "";
+    }
   }, [context]);
 
   const submitExportDecision = React.useCallback(

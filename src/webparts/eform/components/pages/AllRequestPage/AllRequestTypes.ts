@@ -70,7 +70,7 @@ export interface InventoryRequestSPItem {
   WorkflowStatus?: Status;
   Requester?: SPPerson;
   CurrentApprover?: SPPerson;
-  Department?: { Id: number; Title: string };
+  Departments?: string;
   Purpose?: { Id: number; Title: string };
   CostCenter?: { Id: number; Title: string };
   PurposeDetails?: string;

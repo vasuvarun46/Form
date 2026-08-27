@@ -70,7 +70,6 @@ export interface Row {
 
   allApprovalLevels: AllApprovalLevel[];
 
-  departmentId?: number;
   departmentTitle?: string;
   modifiedIso?: string;
   lastActivityIso?: string;
@@ -96,10 +95,6 @@ export interface GetActionInfoResult {
 // ✅ EForm Users profile
 export interface EFormUserProfile {
   email: string;
-  employeeId?: string;
-  jobPosition?: string;
-  departmentId?: number;
-  departmentTitle?: string;
   managerEmail?: string;
   executiveEmail?: string;
   c1Email?: string;
@@ -400,8 +395,7 @@ export function useTeamRequestsLogic(
     React.useCallback(async (): Promise<EFormUserProfile> => {
       const url =
         `${siteUrl}/_api/web/lists/getbytitle('EForm%20Users')/items` +
-        `?$select=Id,Title,EmployeeID,Email,ManagerEmail,ExecutiveEmail,C1Email,C2Email,Jobposition,Department/Id,Department/Title` +
-        `&$expand=Department` +
+        `?$select=Id,Title,Email,ManagerEmail,ExecutiveEmail,C1Email,C2Email` +
         `&$filter=Email eq '${currentUserEmailEsc}'` +
         `&$top=1`;
 
@@ -410,10 +404,6 @@ export function useTeamRequestsLogic(
 
       return {
         email: currentUserEmailRaw,
-        employeeId: it?.EmployeeID ? String(it.EmployeeID) : undefined,
-        jobPosition: it?.Jobposition ? String(it.Jobposition) : undefined,
-        departmentId: it?.Department?.Id ? Number(it.Department.Id) : undefined,
-        departmentTitle: it?.Department?.Title ? String(it.Department.Title) : undefined,
         managerEmail: it?.ManagerEmail ? String(it.ManagerEmail).trim().toLowerCase() : undefined,
         executiveEmail: it?.ExecutiveEmail ? String(it.ExecutiveEmail).trim().toLowerCase() : undefined,
         c1Email: it?.C1Email ? String(it.C1Email).trim().toLowerCase() : undefined,
@@ -428,13 +418,30 @@ export function useTeamRequestsLogic(
   ========================================================= */
 
   const checkApproverRole = React.useCallback(async (): Promise<boolean> => {
-    const url =
-      `${siteUrl}/_api/web/lists/getbytitle('EForm%20Users')/items` +
-      `?$select=Id` +
-      `&$filter=ManagerEmail eq '${currentUserEmailEsc}' or ExecutiveEmail eq '${currentUserEmailEsc}' or C1Email eq '${currentUserEmailEsc}' or C2Email eq '${currentUserEmailEsc}'` +
-      `&$top=1`;
-    const json = await spGetJson(context, url);
-    return Array.isArray(json?.value) && json.value.length > 0;
+    // Check 1: user is listed as a manager/executive/C1/C2 for any employee
+    // Wrapped in try/catch — column names may differ across tenants
+    try {
+      const eformUrl =
+        `${siteUrl}/_api/web/lists/getbytitle('EForm%20Users')/items` +
+        `?$select=Id` +
+        `&$filter=ManagerEmail eq '${currentUserEmailEsc}' or ExecutiveEmail eq '${currentUserEmailEsc}' or C1Email eq '${currentUserEmailEsc}' or C2Email eq '${currentUserEmailEsc}'` +
+        `&$top=1`;
+      const eformJson = await spGetJson(context, eformUrl);
+      if (Array.isArray(eformJson?.value) && eformJson.value.length > 0) return true;
+    } catch { /* field names may differ — fall through to check 2 */ }
+
+    // Check 2: user is the current approver of any active request
+    try {
+      const activeUrl =
+        `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items` +
+        `?$select=Id` +
+        `&$filter=CurrentApproverEmail eq '${currentUserEmailEsc}' and WorkflowStatus ne 'Draft' and WorkflowStatus ne 'Pending'` +
+        `&$top=1`;
+      const activeJson = await spGetJson(context, activeUrl);
+      return Array.isArray(activeJson?.value) && activeJson.value.length > 0;
+    } catch {
+      return false;
+    }
   }, [context, siteUrl, currentUserEmailEsc]);
 
   /* =========================================================
@@ -576,9 +583,8 @@ export function useTeamRequestsLogic(
         `TotalQuantity,TotalAmount,Modified,MultipleApproverData,` +
         `Requester/Title,Requester/EMail,` +
         `CurrentApprover/Id,CurrentApprover/Title,CurrentApprover/EMail,` +
-        `Purpose/Title,PurposeDetails,CostCenter/Title,` +
-        `Department/Id,Department/Title` +
-        `&$expand=Requester,CurrentApprover,Purpose,CostCenter,Department` +
+        `Purpose/Title,PurposeDetails,CostCenter/Title,Departments` +
+        `&$expand=Requester,CurrentApprover,Purpose,CostCenter` +
         `&$filter=${filterClause}` +
         `&$orderby=Id desc`;
 
@@ -709,8 +715,7 @@ export function useTeamRequestsLogic(
           approvalStages,
           allApprovalLevels,
 
-          departmentId: it?.Department?.Id ? Number(it.Department.Id) : undefined,
-          departmentTitle: it?.Department?.Title ? String(it.Department.Title) : undefined,
+          departmentTitle: String(it?.Departments || ""),
 
           modifiedIso: String(it?.Modified || ""),
           lastActivityIso: String(it?.Modified || it?.RequestSubmittedOn || ""),
@@ -1323,7 +1328,7 @@ export function useTeamRequestsLogic(
       const payload: ApprovalFlowPayload = {
         requestId: row.spId,
         actorEmail: currentUserEmailRaw,
-        position: String(profile?.jobPosition || "Unknown"),
+        position: "",
         action: action as FlowAction,
         comments: comments || "",
         quantityShort,

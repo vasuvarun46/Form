@@ -10,13 +10,13 @@ import {
   fetchProductFromAws,
   normalizeFlowToRow,
   getCurrentUserId,
-  getUserDataFromSharePoint,
+
   loadMasters,
   spCreateItem,
   spUpdateItem,
   makeTxnId,
   allocateUniqueTxnId,
-  fetchUserAadProfile,
+  fetchCurrentUserFromGraph,
   AadUserProfile,
   readExcelToItemsMax300,
   validateExcelItemsWithFlowBulk,
@@ -84,7 +84,7 @@ export default function CreateRequestPage({
   const [usage, setUsage] = React.useState<IUsageState>(initialUsage);
   const [inventoryMode, setInventoryMode] = React.useState<InventoryMode | "">("")
   const [inventoryModeError, setInventoryModeError] = React.useState(false);
-  const [userData, setUserData] = React.useState<ISuparaItem[]>([]);
+  const userData: ISuparaItem[] = [];
   const [aadProfile, setAadProfile] = React.useState<AadUserProfile | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
   const [submitError, setSubmitError] = React.useState<string>("");
@@ -345,9 +345,10 @@ export default function CreateRequestPage({
       }
       const isZeroInput = wantedRaw === 0;
       if (isZeroInput) {
+        const zeroMax = row.maxStock ? Number(row.maxStock) : 0;
         setItemErrors((old) => ({
           ...old,
-          [index]: "0 is not allowed. Quantity must be between 1 and 999.",
+          [index]: `Quantity must be 1–999 and not exceed available stock (${zeroMax} pcs).`,
         }));
       }
 
@@ -732,7 +733,7 @@ export default function CreateRequestPage({
             const qty = row.qty;
             const max = row.maxStock != null ? Number(row.maxStock) : 999999;
             if (qty < 1 || qty > 999) {
-              reloadedErrors[idx] = "0 is not allowed. Quantity must be between 1 and 999.";
+              reloadedErrors[idx] = `Quantity must be 1–999 and not exceed available stock (${max} pcs).`;
             } else if (max <= 0) {
               reloadedErrors[idx] = `Quantity must be 1–999 and not exceed available stock (${max} pcs).`;
             } else if (qty > max) {
@@ -815,23 +816,14 @@ React.useEffect(() => {
     initRef.current = true;
 
     try {
-      // STEP 1: Fetch user data ONCE
-      const u = await getUserDataFromSharePoint(context);
+      // Fetch Entra ID profile via Graph API (User.Read.All approved)
+      const profile = await fetchCurrentUserFromGraph(context).catch(() => null);
       if (isCancelled) return;
+      if (profile) setAadProfile(profile);
 
-      setUserData(u);
-
-      // Fetch Azure AD profile for display name and job title (non-blocking)
-      fetchUserAadProfile(context, context.pageContext.user.email)
-        .then((profile) => { if (!isCancelled) setAadProfile(profile); })
-        .catch(() => undefined);
-
-      // STEP 2: Extract deptId from the result we already have
-      const deptId = u?.[0]?.Department?.Id ?? null;
-
-      // STEP 3: Fetch both masters in parallel using the deptId we already know
-      // No redundant getUserDataFromSharePoint call inside loadMastersForDept
-      await loadMasters(context, deptId, setPurposes, setCostCenters);
+      // Use Entra ID department name to filter cost centres
+      const deptName = profile?.department || null;
+      await loadMasters(context, deptName, setPurposes, setCostCenters);
 
     } catch (e: unknown) {
       console.error("CreateRequestPage -> initial fetch error:", e);
@@ -1352,7 +1344,6 @@ React.useEffect(() => {
 
     try {
       setIsSubmitting(true);
-      const req: ISuparaItem | undefined = userData[0];
       const requesterEmail: string = context.pageContext.user.email;
       const requesterUserId: number = await getCurrentUserId(context)
       const purposeMatches: PurposeOption[] = purposes.filter((p) => p.Title === usage.purpose);
@@ -1366,10 +1357,10 @@ React.useEffect(() => {
         LastUpdatedOn: nowIso,
         EntryMode: inventoryMode === "excel" ? "Excel" : "Manual",
         RequesterId: requesterUserId,
-        EmployeeID: req?.EmployeeID || "",
+        EmployeeID: aadProfile?.employeeId || "",
         RequesterEmail: requesterEmail,
-        JobPosition: req?.Jobposition || "",
-        DepartmentId: req?.Department?.Id || "",
+        JobPosition: aadProfile?.jobTitle || "",
+        Departments: aadProfile?.department || "",
         PurposeId: purposeId,
         CostCenterId: costCenterId,
         ExpectedDeliveryDate: usage.expectedDelivery ? yyyyMmDdToIso(usage.expectedDelivery) : undefined,
@@ -1496,7 +1487,6 @@ React.useEffect(() => {
       const canProceed = await runSubmitGuards(opts);
       if (!canProceed) return;
 
-      const req: ISuparaItem | undefined = userData[0];
       const requesterEmail: string = context.pageContext.user.email;
       const purposeMatches: PurposeOption[] = purposes.filter((p) => p.Title === usage.purpose);
       const costCenterMatches: CostCenterOption[] = costCenters.filter((c) => c.Title === usage.costCenter);
@@ -1534,10 +1524,10 @@ React.useEffect(() => {
         PendingSince: nowIso,
         EntryMode: inventoryMode === "excel" ? "Excel" : "Manual",
         RequesterId: requesterUserId,
-        EmployeeID: req?.EmployeeID || "",
+        EmployeeID: aadProfile?.employeeId || "",
         RequesterEmail: requesterEmail,
-        JobPosition: req?.Jobposition || "",
-        DepartmentId: req?.Department?.Id || "",
+        JobPosition: aadProfile?.jobTitle || "",
+        Departments: aadProfile?.department || "",
         PurposeId: purposeId,
         CostCenterId: costCenterId,
         ExpectedDeliveryDate: usage.expectedDelivery
@@ -1820,7 +1810,7 @@ React.useEffect(() => {
           return;
         }
         setSelectedExcelFile(file);
-        setExcelFileName(file ? buildBulkUploadFileName(userData[0]?.EmployeeID) : "");
+        setExcelFileName(file ? buildBulkUploadFileName(aadProfile?.employeeId) : "");
         setExcelValidated(false);
         setExcelErrors([]);
         setItemErrors({});

@@ -60,7 +60,7 @@ type SpPersonTitle = { Title?: string; EMail?: string };
 type InventoryRequestItemJson = Record<string, unknown> & {
   Id?: number;
   Requester?: SpPersonTitle;
-  Department?: SpLookupTitle;
+  Departments?: string;
   CostCenter?: SpLookupTitle;
   Purpose?: SpLookupTitle;
   RequestSubmittedOn?: string;
@@ -281,30 +281,11 @@ async function fetchSPUserProfile(
    email only — no name-based matching.
 ========================================================= */
 async function fetchEFormUserJobPosition(
-  context: WebPartContext,
-  email: string
+  _context: WebPartContext,
+  _email: string
 ): Promise<string> {
-  try {
-    const siteUrl = context.pageContext.web.absoluteUrl;
-    const safeEmail = email.trim().toLowerCase().replace(/'/g, "''");
-    if (!safeEmail) return "";
-
-    const url =
-      `${siteUrl}/_api/web/lists/getbytitle('EForm%20Users')/items` +
-      `?$select=Jobposition` +
-      `&$filter=Email eq '${safeEmail}'` +
-      `&$top=1`;
-
-    const res = await context.spHttpClient.get(url, SPHttpClient.configurations.v1, {
-      headers: { Accept: "application/json;odata=nometadata", "odata-version": "" },
-    });
-    if (!res.ok) return "";
-
-    const data = (await res.json()) as { value?: Array<{ Jobposition?: string }> };
-    return cleanDisplayText(data?.value?.[0]?.Jobposition || "");
-  } catch {
-    return "";
-  }
+  // Jobposition column removed from EForm Users — job title now comes from Entra ID
+  return "";
 }
 
 function parseMultipleApproverData(raw: unknown): ParsedMultipleApproverData | null {
@@ -608,7 +589,7 @@ export default function ExportPDFPage({
         const webUrl = context.pageContext.web.absoluteUrl;
         const requesterInternal = "Requester";
         const currentApproverInternal = "CurrentApprover";
-        const deptInternal = "Department";
+        const deptInternal = "Departments";
         const costInternal = "CostCenter";
         const expectedInternal = "ExpectedDeliveryDate";
         const placeInternal = "PlaceOfDelivery";
@@ -623,12 +604,12 @@ export default function ExportPDFPage({
           `${webUrl}/_api/web/lists/getbytitle('${listTitle}')/items(${spId})` +
           `?$select=Id,RequestSubmittedOn,${Title},${ApproverNames},CurrentApproverEmail,FinalDecisionEmail,` +
           `WorkflowStage,HasMultipleApprovals,ApprovalChainJSON,` +
-          `${requesterInternal}/Title,${requesterInternal}/EMail,${deptInternal}/Title,` +
+          `${requesterInternal}/Title,${requesterInternal}/EMail,${deptInternal},` +
           `${currentApproverInternal}/EMail,` +
           `${expectedInternal},${placeInternal},${purposeDetailsInternal},` +
           `${multipleApproverDataInternal},${costInternal}/Title,` +
           `${purposeInternal}/Title,${workflowStatusInternal}` +
-          `&$expand=${requesterInternal},${currentApproverInternal},${deptInternal},${costInternal},${purposeInternal}`;
+          `&$expand=${requesterInternal},${currentApproverInternal},${costInternal},${purposeInternal}`;
 
         const res = await context.spHttpClient.get(url, SPHttpClient.configurations.v1);
         if (!res.ok) {
@@ -687,7 +668,7 @@ export default function ExportPDFPage({
 
         setExportData({
           requester: safeText((d[requesterInternal] as SpPersonTitle | undefined)?.Title),
-          department: safeText((d[deptInternal] as SpLookupTitle | undefined)?.Title),
+          department: safeText(String(d[deptInternal] || "")),
           costCenter: safeText((d[costInternal] as SpLookupTitle | undefined)?.Title),
           expectedDeliveryDate: expectedDate,
           placeOfDelivery: safeText(d[placeInternal]),
@@ -739,11 +720,8 @@ export default function ExportPDFPage({
   // Job position is sourced from the Search API only
   const resolvedRequestorPosition =
     cleanPositionText(requestorAadProfile?.jobTitle) || "-";
-  // Prefer Azure AD department; fall back to SharePoint Department lookup
   const resolvedRequestorDepartment =
-    cleanDisplayText(exportData?.department) ||
-    cleanDisplayText(requestorAadProfile?.department) ||
-    "";
+    cleanDisplayText(requestorAadProfile?.department) || "";
 
   // =========================================================
   // ✅ SIMPLIFIED footerApprovers — no SingleApprover/MultipleApprover branching.

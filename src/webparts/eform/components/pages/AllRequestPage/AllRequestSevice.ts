@@ -51,12 +51,12 @@ export async function getInventoryRequestsPaged(
     `?$top=${pageSize}` +
     `&$skip=${skip}` +
     `&$orderby=Id desc` +
-    `&$filter=WorkflowStatus ne 'Draft' and WorkflowStatus ne 'Failed' and Department/Title eq '${departmentTitle}'` +
+    `&$filter=WorkflowStatus ne 'Draft' and WorkflowStatus ne 'Failed' and Departments eq '${departmentTitle}'` +
     `&$select=` +
     `Id,WorkflowStatus,TotalQuantity,TotalAmount,` +
-    `PurposeDetails,RequestSubmittedOn,FinalDecisionDate,ExpectedDeliveryDate,` +
-    `Requester/Title,CurrentApprover/Title,Department/Title,Purpose/Title,CostCenter/Title` +
-    `&$expand=Requester,CurrentApprover,Department,Purpose,CostCenter`;
+    `PurposeDetails,RequestSubmittedOn,FinalDecisionDate,ExpectedDeliveryDate,Departments,` +
+    `Requester/Title,CurrentApprover/Title,Purpose/Title,CostCenter/Title` +
+    `&$expand=Requester,CurrentApprover,Purpose,CostCenter`;
 
   const response = await context.spHttpClient.get(
     url,
