@@ -171,7 +171,7 @@ export default function AllRequestPage(
   const loadCostCenterOptions = async (): Promise<void> => {
     const siteUrl = context.pageContext.web.absoluteUrl;
     const response = await context.spHttpClient.get(
-      `${siteUrl}/_api/web/lists/getbytitle('CostCenterMaster')/items?$select=Title&$filter=IsActive eq 1&$orderby=Title asc`,
+      `${siteUrl}/_api/web/lists/getbytitle('CostCenterMaster')/items?$top=5000&$select=Title&$filter=IsActive eq 1&$orderby=Title asc`,
       SPHttpClient.configurations.v1
     );
     const json = await response.json();
@@ -321,6 +321,13 @@ export default function AllRequestPage(
           if (key === canonicalizeStatusFilterKey("Pending")) {
             statusTerms.push(`WorkflowStatus eq 'Pending'`);
             statusTerms.push(`WorkflowStatus eq 'In Approval'`);
+          } else if (key === canonicalizeStatusFilterKey("Submitted")) {
+            // After C1 approves in a multi-stage chain the status becomes
+            // "In Approval", but the user sees it as "Submitted" — both must
+            // be included so the record doesn't vanish from the filter.
+            statusTerms.push(`WorkflowStatus eq 'Submitted'`);
+            statusTerms.push(`WorkflowStatus eq 'In Approval'`);
+            statusTerms.push(`WorkflowStatus eq 'In-Approval'`);
           } else {
             statusTerms.push(`WorkflowStatus eq '${esc(status)}'`);
           }

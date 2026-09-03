@@ -9,6 +9,7 @@ type Props = {
   to?: string;
   onSelectedChange?: (v: string[]) => void;
   onDateRangeChange?: (from: string, to: string) => void;
+  searchable?: boolean;
 };
 
 const WEEKDAY_LABELS: string[] = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -70,8 +71,10 @@ export default function SelectBox({
   to = "",
   onSelectedChange,
   onDateRangeChange,
+  searchable = false,
 }: Props): JSX.Element {
   const [open, setOpen] = React.useState(false);
+  const [searchTerm, setSearchTerm] = React.useState("");
   const ref = React.useRef<HTMLDivElement>(null);
 
   const [viewMonth, setViewMonth] = React.useState<Date>(() => {
@@ -79,11 +82,11 @@ export default function SelectBox({
     return new Date(anchor.getFullYear(), anchor.getMonth(), 1);
   });
 
-  // 🔹 UPDATED LOGIC HERE (only change)
   React.useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (!ref.current?.contains(e.target as Node)) {
         setOpen(false);
+        setSearchTerm("");
       }
     };
 
@@ -373,21 +376,46 @@ ${open ? "rounded-b-none border-b-0" : ""}
               </div>
             </div>
           ) : (
-            <div className="max-h-[260px] overflow-auto p-3 space-y-2  bg-[#F8F8F8]">
-
-              {options.map((opt) => (
-                <label
-                  key={opt}
-                  className="flex items-center gap-2 text-[11px] text-gray-700 cursor-pointer"
-                >
+            <div className="bg-[#F8F8F8]">
+              {searchable && (
+                <div className="px-3 pt-2 pb-1">
                   <input
-                    type="checkbox"
-                    checked={selected.indexOf(opt) !== -1}
-                    onChange={() => toggle(opt)}
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search..."
+                    className="w-full border border-[#e5e7eb] rounded-md px-2 py-1 text-[11px] outline-none focus:border-[#2172DA] bg-white"
+                    autoFocus
                   />
-                  {opt}
-                </label>
-              ))}
+                </div>
+              )}
+              <div className="max-h-[220px] overflow-auto p-3 space-y-2">
+                {(() => {
+                  const filtered = searchable && searchTerm.trim()
+                    ? options.filter((o) => o.toLowerCase().includes(searchTerm.trim().toLowerCase()))
+                    : options;
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="text-[11px] text-gray-400 text-center py-2">
+                        No results
+                      </div>
+                    );
+                  }
+                  return filtered.map((opt) => (
+                    <label
+                      key={opt}
+                      className="flex items-center gap-2 text-[11px] text-gray-700 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected.indexOf(opt) !== -1}
+                        onChange={() => toggle(opt)}
+                      />
+                      {opt}
+                    </label>
+                  ));
+                })()}
+              </div>
             </div>
           )}
         </div>

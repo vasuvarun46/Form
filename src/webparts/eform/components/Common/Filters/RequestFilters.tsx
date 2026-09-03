@@ -11,6 +11,7 @@ type SelectBoxProps = {
   to?: string;
   onSelectedChange?: (v: string[]) => void;
   onDateRangeChange?: (from: string, to: string) => void;
+  searchable?: boolean;
 };
 
 type RequestFilterCardProps = {
@@ -128,9 +129,10 @@ export default function RequestFilterCard(
           kind="multi"
           options={costCenterOptions}
           selected={costCenterSelected}
+          searchable={true}
           onSelectedChange={(v) => {
             setCostCenterSelected(v);
-           
+
           }}
         />
 

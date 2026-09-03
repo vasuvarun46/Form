@@ -273,19 +273,71 @@ async function fetchSPUserProfile(
 
 /* =========================================================
    fetchEFormUserJobPosition
-   The "EForm Users" list's Jobposition field is the same source
-   used to stamp JobPosition onto a request at submit time — a
-   more reliable fallback than the People Search index above,
-   which depends on Search/User Profile sync being fully
-   configured for every account (approvers included). Matched by
-   email only — no name-based matching.
+   Fetches the job title of any user (including approvers) by
+   their email via Microsoft Graph API GET /users/{email}.
+   Requires User.Read.All permission (already approved).
+   Used as a reliable fallback when People Search returns empty.
 ========================================================= */
 async function fetchEFormUserJobPosition(
-  _context: WebPartContext,
-  _email: string
+  context: WebPartContext,
+  email: string
 ): Promise<string> {
-  // Jobposition column removed from EForm Users — job title now comes from Entra ID
-  return "";
+  if (!email) return "";
+  try {
+    const graphClient = await context.msGraphClientFactory.getClient("3");
+    const user: { jobTitle?: string } = await graphClient
+      .api(`/users/${encodeURIComponent(email.trim())}`)
+      .select("jobTitle")
+      .get();
+    return String(user.jobTitle || "");
+  } catch {
+    return "";
+  }
+}
+
+/* =========================================================
+   fetchPositionByName
+   Fallback for acted approvers whose email is not embedded
+   in the MultipleApproverData stages JSON. Queries the SP
+   People Search index by display name and returns JobTitle.
+========================================================= */
+async function fetchPositionByName(
+  context: WebPartContext,
+  name: string
+): Promise<string> {
+  if (!name) return "";
+  try {
+    const siteUrl = context.pageContext.web.absoluteUrl;
+    // Strip "(Nickname)" suffix that SP display names often carry — it reduces
+    // false matches and improves People Search relevance.
+    const searchName = name.replace(/\s*\(.*?\)\s*/g, " ").trim();
+    if (!searchName) return "";
+    const safeQuery = encodeURIComponent(`"${searchName}"`);
+    const url =
+      `${siteUrl}/_api/search/query` +
+      `?querytext=${safeQuery}` +
+      `&sourceid='B09A7990-05EA-4AF9-81EF-EDFAB16C4E31'` +
+      `&selectproperties='JobTitle'` +
+      `&rowlimit=3`;
+
+    const res = await context.spHttpClient.get(url, SPHttpClient.configurations.v1, {
+      headers: { Accept: "application/json;odata=nometadata", "odata-version": "" },
+    });
+    if (!res.ok) return "";
+
+    const data = (await res.json()) as PeopleSearchResponse;
+    const rows = data?.PrimaryQueryResult?.RelevantResults?.Table?.Rows ?? [];
+    for (const row of rows) {
+      const cells = row.Cells ?? [];
+      const get = (key: string): string =>
+        String(cells.find((c) => c.Key === key)?.Value ?? "").trim();
+      const jobTitle = cleanDisplayText(get("JobTitle"));
+      if (jobTitle) return jobTitle;
+    }
+    return "";
+  } catch {
+    return "";
+  }
 }
 
 function parseMultipleApproverData(raw: unknown): ParsedMultipleApproverData | null {
@@ -955,34 +1007,60 @@ export default function ExportPDFPage({
     resolveNames().catch(() => undefined);
   }, [footerApprovers, context, resolvedApproverNames]);
 
-  // Fetch approver job positions: Search API (Azure AD/Entra ID) first, falling
-  // back to the "EForm Users" list — matched by email only in both cases.
+  // Fetch approver job positions: email-based (SP People Search → Graph API)
+  // first; falls back to name-based SP People Search for acted stages whose
+  // email is not embedded in the MultipleApproverData JSON.
+  // Guard: do not start fetching until exportData is fully loaded.
+  // Without this guard, the effect runs twice in the autoExport path —
+  // once after setMultipleApproverRaw (no emails yet, fetches by name) and
+  // again after setExportData (adds finalDecisionEmail, fetches by email).
+  // The email-based fetch completes faster, sets approverPositionsFetched=true,
+  // and autoExport fires before the name-based result arrives, causing the
+  // first approver's position to be missing from the PDF.
   React.useEffect(() => {
     const fetchApproverPositions = async (): Promise<void> => {
-      const uniqueEmails = Array.from(
-        new Set(
-          footerApprovers
-            .map((a) => cleanDisplayText(a.approverEmail || "").toLowerCase())
-            .filter((e) => !!e && !fetchedApproverEmails.current.has(e))
-        )
-      );
-      if (!uniqueEmails.length) {
+      if (!exportData) return;
+
+      const toFetch = footerApprovers.filter((a) => {
+        const emailKey = cleanDisplayText(a.approverEmail || "").toLowerCase();
+        const name = cleanDisplayText(a.name || "");
+        if (!emailKey && !name) return false;
+        const cacheKey = emailKey || `slot_${a.slot}`;
+        return !fetchedApproverEmails.current.has(cacheKey);
+      });
+
+      if (!toFetch.length) {
         setApproverPositionsFetched(true);
         return;
       }
 
-      // Signal that positions are being fetched (auto-export must wait)
       setApproverPositionsFetched(false);
 
       // Mark as in-flight before async calls to prevent duplicate fetches
-      uniqueEmails.forEach((e) => fetchedApproverEmails.current.add(e));
+      toFetch.forEach((a) => {
+        const emailKey = cleanDisplayText(a.approverEmail || "").toLowerCase();
+        fetchedApproverEmails.current.add(emailKey || `slot_${a.slot}`);
+      });
 
       const newPositions: Record<string, string> = {};
-      for (const email of uniqueEmails) {
+      for (const approver of toFetch) {
         try {
-          let position = (await fetchSPUserProfile(context, email)).jobTitle;
-          if (!position) position = await fetchEFormUserJobPosition(context, email);
-          if (position) newPositions[email] = position;
+          const emailKey = cleanDisplayText(approver.approverEmail || "").toLowerCase();
+          const storeKey = emailKey || `slot_${approver.slot}`;
+          let position = "";
+
+          if (emailKey) {
+            position = (await fetchSPUserProfile(context, emailKey)).jobTitle;
+            if (!position) position = await fetchEFormUserJobPosition(context, emailKey);
+          }
+
+          // Name-based fallback: used when email is absent OR email lookups returned empty
+          if (!position) {
+            const name = cleanDisplayText(approver.name || "");
+            if (name) position = await fetchPositionByName(context, name);
+          }
+
+          if (position) newPositions[storeKey] = position;
         } catch {
           // silently skip
         }
@@ -995,7 +1073,7 @@ export default function ExportPDFPage({
     };
 
     fetchApproverPositions().catch(() => undefined);
-  }, [footerApprovers, context]);
+  }, [footerApprovers, context, exportData]);
 
   const runActionAndNavigate = React.useCallback(
     async (action: PendingAction, comments = ""): Promise<void> => {
@@ -1475,7 +1553,10 @@ export default function ExportPDFPage({
               "-";
 
             const resolvedPosition = cleanDisplayText(
-              approverAadPositions[approverEmailKey] || approver.position || ""
+              approverAadPositions[approverEmailKey] ||
+              approverAadPositions[`slot_${approver.slot}`] ||
+              approver.position ||
+              ""
             );
             const displayPosition = resolvedPosition || "-";
 

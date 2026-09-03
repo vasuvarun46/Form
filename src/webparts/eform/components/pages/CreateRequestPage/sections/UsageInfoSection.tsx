@@ -98,6 +98,7 @@ function FieldSelect({
   error,
   disabled,
   grayBackground = false,
+  searchable = false,
 }: {
   label: string;
   value: string;
@@ -106,17 +107,32 @@ function FieldSelect({
   error?: string;
   disabled?: boolean;
   grayBackground?: boolean;
+  searchable?: boolean;
 }): JSX.Element {
   const bgColor = disabled && grayBackground ? "#f3f4f6" : "#ffffff";
   const textColor = disabled && grayBackground ? "#6b7280" : "#374151";
 
   const [open, setOpen] = React.useState(false);
   const [hoveredOp, setHoveredOp] = React.useState<string | null>(null);
+  const [search, setSearch] = React.useState("");
   const innerRef = React.useRef<HTMLDivElement>(null);
+  const searchRef = React.useRef<HTMLInputElement>(null);
   const close = React.useCallback(() => setOpen(false), []);
   useOutsideClose(innerRef, open, close);
 
+  React.useEffect(() => {
+    if (!open) { setSearch(""); return; }
+    if (searchable && searchRef.current) {
+      const t = setTimeout(() => searchRef.current?.focus(), 30);
+      return () => clearTimeout(t);
+    }
+  }, [open, searchable]);
+
   const toggle = (): void => { if (!disabled) setOpen((o) => !o); };
+
+  const visibleOptions = searchable && search.trim()
+    ? options.filter((op) => op.toLowerCase().includes(search.toLowerCase()))
+    : options;
 
   return (
     <div>
@@ -137,36 +153,54 @@ function FieldSelect({
 
         {open && (
           <div
-            className="absolute left-0 top-full bg-white border border-[#e0e0e0] rounded-lg shadow-xl overflow-y-auto eform-thin-scroll"
-            style={{ zIndex: 9999, width: "100%", maxHeight: 240 }}
+            className="absolute left-0 top-full bg-white border border-[#e0e0e0] rounded-lg shadow-xl overflow-hidden"
+            style={{ zIndex: 9999, width: "100%" }}
           >
-            {/* Placeholder row: grey when nothing hovered AND no value; white otherwise */}
-            <div
-              className="px-4 py-2 text-[12px] cursor-default select-none"
-              style={{
-                backgroundColor: (!value && !hoveredOp) ? "#C8C8C8" : "#ffffff",
-                color: (!value && !hoveredOp) ? "#ffffff" : "#9ca3af",
-              }}
-            >
-              Select {label}
-            </div>
-
-            {options.map((op) => (
-              <button
-                key={op}
-                type="button"
-                onClick={() => { onChange(op); setOpen(false); }}
-                onMouseEnter={() => setHoveredOp(op)}
-                onMouseLeave={() => setHoveredOp(null)}
+            {searchable && (
+              <div className="p-2 border-b border-gray-100">
+                <input
+                  ref={searchRef}
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search..."
+                  className="w-full px-2 py-1 text-[12px] border border-gray-200 rounded outline-none focus:border-blue-400"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+            )}
+            <div className="overflow-y-auto eform-thin-scroll" style={{ maxHeight: 240 }}>
+              {/* Placeholder row: grey when nothing hovered AND no value; white otherwise */}
+              <div
+                className="px-4 py-2 text-[12px] cursor-default select-none"
                 style={{
-                  backgroundColor: hoveredOp === op ? "#1967D2" : "#ffffff",
-                  color: hoveredOp === op ? "white" : "#374151",
+                  backgroundColor: (!value && !hoveredOp) ? "#C8C8C8" : "#ffffff",
+                  color: (!value && !hoveredOp) ? "#ffffff" : "#9ca3af",
                 }}
-                className="w-full text-left px-4 py-2 text-[12px]"
               >
-                {op}
-              </button>
-            ))}
+                Select {label}
+              </div>
+
+              {visibleOptions.map((op) => (
+                <button
+                  key={op}
+                  type="button"
+                  onClick={() => { onChange(op); setOpen(false); }}
+                  onMouseEnter={() => setHoveredOp(op)}
+                  onMouseLeave={() => setHoveredOp(null)}
+                  style={{
+                    backgroundColor: hoveredOp === op ? "#1967D2" : "#ffffff",
+                    color: hoveredOp === op ? "white" : "#374151",
+                  }}
+                  className="w-full text-left px-4 py-2 text-[12px]"
+                >
+                  {op}
+                </button>
+              ))}
+              {visibleOptions.length === 0 && (
+                <div className="px-4 py-2 text-[12px] text-gray-400">No results</div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -434,6 +468,7 @@ export default function UsageInfoSection({
           error={fieldErrors.costCenter}
           disabled={disabled}
           grayBackground={disabled}
+          searchable
         />
 
         <FieldDate

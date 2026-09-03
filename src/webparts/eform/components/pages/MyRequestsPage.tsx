@@ -235,10 +235,22 @@ export default function MyRequestsPage(props: MyRequestsPageProps): JSX.Element 
 
     // Status filter
     if (statusSelected.length > 0) {
-      const normalized = statusSelected.map(s => s.toLowerCase());
-      data = data.filter(r =>
-        normalized.includes(String(r.status).toLowerCase())
-      );
+      // Normalize both filter selection and row status the same way as TeamService:
+      // replace hyphens with spaces first, then canonicalize ("pending" → "in approval").
+      const normalizeKey = (v: string): string =>
+        canonicalizeStatusFilterKey(String(v || "").replace(/-/g, " "));
+      const selectedKeys = new Set(statusSelected.map(normalizeKey));
+      const submittedKey = normalizeKey("Submitted");   // "submitted"
+      const inApprovalKey = normalizeKey("In Approval"); // "in approval"
+      data = data.filter(r => {
+        const rowKey = normalizeKey(String(r.status));
+        if (selectedKeys.has(rowKey)) return true;
+        // "In Approval" / "In-Approval" are displayed as "Submitted" — after C1
+        // approves in a multi-stage chain the status becomes "In Approval" but
+        // the user expects those records to appear under the "Submitted" filter.
+        if (rowKey === inApprovalKey && selectedKeys.has(submittedKey)) return true;
+        return false;
+      });
     }
 
     // Purpose filter

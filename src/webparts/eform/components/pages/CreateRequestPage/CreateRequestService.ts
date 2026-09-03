@@ -894,13 +894,11 @@ export const loadMasters = async (
     `${siteUrl}/_api/web/lists/getbytitle('PurposeMaster')/items` +
     `?$top=5000&$select=Id,Title,IsActive&$filter=IsActive eq 1&$orderby=Title`;
 
-  const safeDeptName = (deptName || "").replace(/'/g, "''").replace(/&/g, "%26");
   const costUrl =
     `${siteUrl}/_api/web/lists/getbytitle('CostCenterMaster')/items` +
     `?$top=5000` +
-    `&$select=Id,Title,${costCenterInternalName},IsActive,Department/Id,Department/Title` +
-    `&$expand=Department` +
-    `&$filter=IsActive eq 1 and Department/Title eq '${safeDeptName}'` +
+    `&$select=Id,Title,${costCenterInternalName},IsActive` +
+    `&$filter=IsActive eq 1` +
     `&$orderby=Title`;
 
   type PurposeItem = { Id: number; Title: string; IsActive: boolean };
@@ -909,7 +907,6 @@ export const loadMasters = async (
     Id: number;
     Title: string;
     IsActive: boolean;
-    Department?: { Id: number; Title: string };
     [key: string]: unknown;
   };
 
@@ -930,9 +927,6 @@ export const loadMasters = async (
     Id: x.Id,
     Title: x.Title,
     CostCenterCode: String(x[costCenterInternalName] ?? ""),
-    Department: x.Department
-      ? { Id: x.Department.Id, Title: x.Department.Title }
-      : undefined,
   }));
 
   setPurposes(pList);

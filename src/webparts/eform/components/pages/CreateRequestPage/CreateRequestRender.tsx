@@ -161,7 +161,8 @@ type Props = {
   applyModeChange: (mode: InventoryMode) => void;
   setPendingMode: React.Dispatch<React.SetStateAction<InventoryMode | "">>;
 
-
+  minQty: number;
+  maxQty: number;
 };
 export default function CreateRequestRender(props: Props): JSX.Element {
   const {
@@ -263,6 +264,8 @@ export default function CreateRequestRender(props: Props): JSX.Element {
     applyModeChange,
     setPendingMode,
     draftDisabled,
+    minQty,
+    maxQty,
 
   } = props;
 
@@ -339,7 +342,7 @@ export default function CreateRequestRender(props: Props): JSX.Element {
   const showExcelNotice = inventoryMode === "excel" && excelValidated;
   const hasInvalidManualQty = inventoryMode === "manual" && items.some((it, idx) => {
     const qty = Number(it.qty ?? 0);
-    if (!Number.isFinite(qty) || qty < 1 || qty > 999) return true;
+    if (!Number.isFinite(qty) || qty < minQty || qty > maxQty) return true;
     const maxStock = Number(it.maxStock ?? 0);
     if (maxStock > 0 && qty > maxStock) return true;
     return !!itemErrors[idx];
@@ -347,8 +350,8 @@ export default function CreateRequestRender(props: Props): JSX.Element {
 
   const clampQty = (v: number) => Math.max(0, v);
   const getManualQtyError = (qty: number, maxStock: number): string => {
-    if (!Number.isFinite(qty) || qty < 1 || qty > 999 || qty > maxStock) {
-      return `Quantity must be 1–999 and not exceed\navailable stock (${maxStock} pcs).`;
+    if (!Number.isFinite(qty) || qty < minQty || qty > maxQty || qty > maxStock) {
+      return `Quantity must be ${minQty}–${maxQty} and not exceed\navailable stock (${maxStock} pcs).`;
     }
     return "";
   };
@@ -881,16 +884,16 @@ export default function CreateRequestRender(props: Props): JSX.Element {
                         onClick={handleAddManualItem}
                         disabled={
                           Number(manualProduct.Warehouse_SOH_Qty ?? 0) <= 0 ||
-                          manualQty < 1 ||
-                          manualQty > 999 ||
+                          manualQty < minQty ||
+                          manualQty > maxQty ||
                           manualQty > manualMaxStock ||
                           !!manualQtyError
                         }
                         className={[
                           "h-8 min-w-[76px] rounded-md px-4 text-[12px] font-semibold",
                           Number(manualProduct.Warehouse_SOH_Qty ?? 0) <= 0 ||
-                            manualQty < 1 ||
-                            manualQty > 999 ||
+                            manualQty < minQty ||
+                            manualQty > maxQty ||
                             manualQty > manualMaxStock ||
                             !!manualQtyError
                             ? "bg-[#d9d9d9] text-[#888888] cursor-not-allowed"

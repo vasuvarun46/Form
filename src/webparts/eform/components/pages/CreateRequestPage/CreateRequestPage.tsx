@@ -139,6 +139,8 @@ export default function CreateRequestPage({
   const [customErrorOpen, setCustomErrorOpen] = React.useState(false);  // Show error message popup
   const [modeChangeConfirmOpen, setModeChangeConfirmOpen] = React.useState(false);
   const [pendingMode, setPendingMode] = React.useState<InventoryMode | "">("");
+  const [minQty, setMinQty] = React.useState<number>(1);
+  const [maxQty, setMaxQty] = React.useState<number>(999);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const persistInFlightRef = React.useRef<boolean>(false);
   const excelOnlyErrorMessage = "Only Excel (.xlsx) files are allowed.";
@@ -348,12 +350,12 @@ export default function CreateRequestPage({
         const zeroMax = row.maxStock ? Number(row.maxStock) : 0;
         setItemErrors((old) => ({
           ...old,
-          [index]: `Quantity must be 1–999 and not exceed available stock (${zeroMax} pcs).`,
+          [index]: `Quantity must be ${minQty}–${maxQty} and not exceed available stock (${zeroMax} pcs).`,
         }));
       }
 
-      // clamp 1..999
-      const wanted = Math.min(999, Math.max(0, Math.trunc(wantedRaw)));
+      // clamp minQty..maxQty
+      const wanted = Math.min(maxQty, Math.max(0, Math.trunc(wantedRaw)));
 
 
       const max = row.maxStock ? Number(row.maxStock) : 999999;
@@ -361,7 +363,7 @@ export default function CreateRequestPage({
       if (wanted > max) {
         setItemErrors((old) => ({
           ...old,
-          [index]: `Quantity must be 1–999 and not exceed available stock (${max} pcs).`,
+          [index]: `Quantity must be ${minQty}–${maxQty} and not exceed available stock (${max} pcs).`,
         }));
       } else if (!isZeroInput) {
         setItemErrors((old) => {
@@ -478,7 +480,7 @@ export default function CreateRequestPage({
         setManualMaxStock(stock);
         setManualProduct(flow);
         setManualQty(1);
-        setManualQtyError(`Quantity must be 1–999 and not exceed available stock (${stock} pcs).`);
+        setManualQtyError(`Quantity must be ${minQty}–${maxQty} and not exceed available stock (${stock} pcs).`);
         setManualPopupOpen(true);
         return;
       }
@@ -532,10 +534,10 @@ export default function CreateRequestPage({
       return;
     }
 
-    // qty must be 1..999
-    if (!Number.isFinite(qty) || qty < 1 || qty > 999) {
+    // qty must be minQty..maxQty
+    if (!Number.isFinite(qty) || qty < minQty || qty > maxQty) {
       setManualQtyError(
-        `Quantity must be 1–999 and not exceed available stock (${stock} pcs).`
+        `Quantity must be ${minQty}–${maxQty} and not exceed available stock (${stock} pcs).`
       );
       return;
     }
@@ -551,7 +553,7 @@ export default function CreateRequestPage({
     // qty > stock
     if (qty > stock) {
       setManualQtyError(
-        `Quantity must be 1–999 and not exceed available stock (${stock} pcs).`
+        `Quantity must be ${minQty}–${maxQty} and not exceed available stock (${stock} pcs).`
       );
       return;
     }
@@ -665,6 +667,29 @@ export default function CreateRequestPage({
   };
 
 
+  React.useEffect(() => {
+    const fetchQuantityRange = async (): Promise<void> => {
+      try {
+        const siteUrl = context.pageContext.web.absoluteUrl;
+        const url =
+          `${siteUrl}/_api/web/lists/getbytitle('QuantityRange')/items` +
+          `?$filter=IsActive eq 1&$select=MinQuantity,MaxQuantity&$top=1`;
+        const res = await context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        const json = await res.json();
+        const record = json?.value?.[0];
+        if (record) {
+          const fetchedMin = Number(record.MinQuantity);
+          const fetchedMax = Number(record.MaxQuantity);
+          if (Number.isFinite(fetchedMin) && fetchedMin > 0) setMinQty(fetchedMin);
+          if (Number.isFinite(fetchedMax) && fetchedMax > 0) setMaxQty(fetchedMax);
+        }
+      } catch {
+        // keep defaults 1 / 999 on any fetch failure
+      }
+    };
+    fetchQuantityRange().catch(() => undefined);
+  }, []);
+
   const draftLoadedRef = React.useRef<number | null>(null);
   React.useEffect(() => {
     let isCancelled = false;
@@ -732,12 +757,12 @@ export default function CreateRequestPage({
           loadedItems.forEach((row, idx) => {
             const qty = row.qty;
             const max = row.maxStock != null ? Number(row.maxStock) : 999999;
-            if (qty < 1 || qty > 999) {
-              reloadedErrors[idx] = `Quantity must be 1–999 and not exceed available stock (${max} pcs).`;
+            if (qty < minQty || qty > maxQty) {
+              reloadedErrors[idx] = `Quantity must be ${minQty}–${maxQty} and not exceed available stock (${max} pcs).`;
             } else if (max <= 0) {
-              reloadedErrors[idx] = `Quantity must be 1–999 and not exceed available stock (${max} pcs).`;
+              reloadedErrors[idx] = `Quantity must be ${minQty}–${maxQty} and not exceed available stock (${max} pcs).`;
             } else if (qty > max) {
-              reloadedErrors[idx] = `Quantity must be 1–999 and not exceed available stock (${max} pcs).`;
+              reloadedErrors[idx] = `Quantity must be ${minQty}–${maxQty} and not exceed available stock (${max} pcs).`;
             }
           });
           setItemErrors(reloadedErrors);
@@ -955,7 +980,7 @@ React.useEffect(() => {
             notices.push("Duplicate SKU codes are not allowed in Excel upload.");
           }
           if (hasQtyOutOfRange) {
-            notices.push("Quantity must be between 1 and 999 for every row.");
+            notices.push(`Quantity must be between ${minQty} and ${maxQty} for every row.`);
           }
           setCustomErrorMessage(notices.join(" "));
           setCustomErrorOpen(true);
@@ -1280,14 +1305,14 @@ React.useEffect(() => {
           stockUpdates[i] = stock;
 
           if (stock <= 0) {
-            nextItemErrors[i] = `Quantity must be 1–999 and not exceed available stock (${stock} pcs).`;
+            nextItemErrors[i] = `Quantity must be ${minQty}–${maxQty} and not exceed available stock (${stock} pcs).`;
             hasManualStockIssue = true;
             continue;
           }
 
-          if (reqQty < 1 || reqQty > 999 || reqQty > stock) {
+          if (reqQty < minQty || reqQty > maxQty || reqQty > stock) {
             nextItemErrors[i] =
-              `Quantity must be 1–999 and not exceed available stock (${stock} pcs).`;
+              `Quantity must be ${minQty}–${maxQty} and not exceed available stock (${stock} pcs).`;
             hasManualStockIssue = true;
           }
         } catch {
@@ -1295,8 +1320,8 @@ React.useEffect(() => {
           // fall back to the stock value saved when the item was added.
           const savedStock = Number(items[i].maxStock ?? 0);
           stockUpdates[i] = savedStock;
-          if (savedStock <= 0 || reqQty < 1 || reqQty > 999 || reqQty > savedStock) {
-            nextItemErrors[i] = `Quantity must be 1–999 and not exceed available stock (${savedStock} pcs).`;
+          if (savedStock <= 0 || reqQty < minQty || reqQty > maxQty || reqQty > savedStock) {
+            nextItemErrors[i] = `Quantity must be ${minQty}–${maxQty} and not exceed available stock (${savedStock} pcs).`;
             hasManualStockIssue = true;
           }
         }
@@ -1888,6 +1913,8 @@ React.useEffect(() => {
       customErrorMessage={customErrorMessage}
       setCustomErrorOpen={setCustomErrorOpen}
       setCustomErrorMessage={setCustomErrorMessage}
+      minQty={minQty}
+      maxQty={maxQty}
       isProcessing={isProcessing}
       setIsProcessing={setIsProcessing}
       excelFailPopupOpen={excelFailPopupOpen}

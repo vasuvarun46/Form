@@ -95,6 +95,7 @@ export interface GetActionInfoResult {
 // ✅ EForm Users profile
 export interface EFormUserProfile {
   email: string;
+  jobTitle?: string;
   managerEmail?: string;
   executiveEmail?: string;
   c1Email?: string;
@@ -402,8 +403,16 @@ export function useTeamRequestsLogic(
       const json = await spGetJson(context, url);
       const it = json?.value?.[0];
 
+      let jobTitle = "";
+      try {
+        const graphClient = await context.msGraphClientFactory.getClient("3");
+        const me: { jobTitle?: string } = await graphClient.api("/me").select("jobTitle").get();
+        jobTitle = String(me.jobTitle || "");
+      } catch { /* ignore — position will be empty if Graph is unavailable */ }
+
       return {
         email: currentUserEmailRaw,
+        jobTitle,
         managerEmail: it?.ManagerEmail ? String(it.ManagerEmail).trim().toLowerCase() : undefined,
         executiveEmail: it?.ExecutiveEmail ? String(it.ExecutiveEmail).trim().toLowerCase() : undefined,
         c1Email: it?.C1Email ? String(it.C1Email).trim().toLowerCase() : undefined,
@@ -484,7 +493,8 @@ export function useTeamRequestsLogic(
 
       const costCenterUrl =
         `${siteUrl}/_api/web/lists/getbytitle('CostCenterMaster')/items` +
-        `?$select=Title,IsActive` +
+        `?$top=5000` +
+        `&$select=Title,IsActive` +
         `&$filter=IsActive eq 1` +
         `&$orderby=Title asc`;
 
@@ -528,7 +538,10 @@ export function useTeamRequestsLogic(
             key === statusFilterKey("Pending")
           )
             return;
-          if (isInApprovalStatus(status)) {
+          if (isInApprovalStatus(status) || key === statusFilterKey("Submitted")) {
+            // Both "Submitted" and "In Approval" mean "pending approval" — after the
+            // first approver approves in a multi-stage chain the status becomes
+            // "In Approval", so filtering by "Submitted" must include both values.
             statusTerms.push(`WorkflowStatus eq 'Submitted'`);
             statusTerms.push(`WorkflowStatus eq 'In Approval'`);
             statusTerms.push(`WorkflowStatus eq 'In-Approval'`);
@@ -1328,7 +1341,7 @@ export function useTeamRequestsLogic(
       const payload: ApprovalFlowPayload = {
         requestId: row.spId,
         actorEmail: currentUserEmailRaw,
-        position: "",
+        position: profile?.jobTitle || "",
         action: action as FlowAction,
         comments: comments || "",
         quantityShort,
