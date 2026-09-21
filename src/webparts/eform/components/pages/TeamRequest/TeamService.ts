@@ -1369,6 +1369,39 @@ export function useTeamRequestsLogic(
       const msg = toUserMessage(resp?.message, ok ? "Success" : "Failed");
       const newStatus = resp?.newStatus ? String(resp.newStatus) : undefined;
 
+      // Persist RaiseCount / ApprovalCount for each mismatched item (best-effort, non-fatal)
+      if (action === "Approve" && skuMismatches.length > 0) {
+        try {
+          const CHUNK = 8;
+          for (let i = 0; i < skuMismatches.length; i += CHUNK) {
+            const chunk = skuMismatches.slice(i, i + CHUNK);
+            await Promise.all(
+              chunk.map((m) =>
+                context.spHttpClient.post(
+                  `${siteUrl}/_api/web/lists/getbytitle('InventoryRequestItems')/items(${m.itemId})`,
+                  SPHttpClient.configurations.v1,
+                  {
+                    headers: {
+                      Accept: "application/json;odata=nometadata",
+                      "Content-Type": "application/json;odata=nometadata",
+                      "odata-version": "",
+                      "IF-MATCH": "*",
+                      "X-HTTP-Method": "MERGE",
+                    },
+                    body: JSON.stringify({
+                      RaiseCount: m.requestedQty,
+                      ApprovalCount: m.availableQty,
+                    }),
+                  }
+                )
+              )
+            );
+          }
+        } catch (err) {
+          console.error("[TeamService] RaiseCount/ApprovalCount update failed:", err);
+        }
+      }
+
       // ── INTERMEDIATE MULTI-STAGE APPROVAL ─────────────────────────────
       // When A1 approves but there are still more stages (e.g. C1 approves,
       // C2 still needs to), Power Automate does not reliably set

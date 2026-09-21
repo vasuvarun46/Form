@@ -20,10 +20,7 @@ export const normalizeFilterText: FilterNormalizer = (value: string): string =>
 
 export const canonicalizeStatusFilterKey: FilterNormalizer = (
   value: string
-): string => {
-  const normalized = normalizeFilterText(value);
-  return normalized === "pending" ? "in approval" : normalized;
-};
+): string => normalizeFilterText(value);
 
 export const dedupeLabels = (
   values: string[],

@@ -12,6 +12,7 @@ import { HttpClient, SPHttpClient } from "@microsoft/sp-http";
 import {
   fetchProductFromAws,
   normalizeFlowToRow,
+  spUpdateItem,
 } from "./CreateRequestPage/CreateRequestService";
 
 export type FlowAction = "Approve" | "Reject" | "Bypass";
@@ -175,6 +176,59 @@ export async function submitApprovalDecision(
   const siteOrigin = String(input.context.pageContext.web.absoluteUrl || "").replace(/\/$/, "");
   const detailViewUrl = `${siteOrigin}/SitePages/RequestDetail.aspx?requestId=${input.requestId}`;
 
+  // Mirror TeamService: update item quantities and header totals before calling PA
+  let finalTotalQuantity = input.totalQuantity ?? 0;
+  let finalTotalTagPrice = input.totalTagPrice ?? 0;
+
+  if (input.action === "Approve" && skuMismatches.length > 0) {
+    for (const mismatch of skuMismatches) {
+      if (mismatch.availableQty === -1) continue;
+      const approvedQty = Math.max(0, mismatch.availableQty);
+      await input.context.spHttpClient.post(
+        `${siteOrigin}/_api/web/lists/getbytitle('InventoryRequestItems')/items(${mismatch.itemId})`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            Accept: "application/json;odata=nometadata",
+            "Content-Type": "application/json;odata=nometadata",
+            "odata-version": "",
+            "IF-MATCH": "*",
+            "X-HTTP-Method": "MERGE",
+          },
+          body: JSON.stringify({
+            Quantity: approvedQty,
+            LineTotal: approvedQty * mismatch.tagPricePerUnit,
+          }),
+        }
+      );
+    }
+
+    const updatedItems = await getActiveRequestItems(input.context, input.requestId);
+    finalTotalQuantity = updatedItems.reduce((sum, x) => sum + Number(x.Quantity || 0), 0);
+    finalTotalTagPrice = updatedItems.reduce(
+      (sum, x) => sum + Number(x.Quantity || 0) * Number(x.UnitPrice || 0),
+      0
+    );
+
+    await input.context.spHttpClient.post(
+      `${siteOrigin}/_api/web/lists/getbytitle('InventoryRequests')/items(${input.requestId})`,
+      SPHttpClient.configurations.v1,
+      {
+        headers: {
+          Accept: "application/json;odata=nometadata",
+          "Content-Type": "application/json;odata=nometadata",
+          "odata-version": "",
+          "IF-MATCH": "*",
+          "X-HTTP-Method": "MERGE",
+        },
+        body: JSON.stringify({
+          TotalQuantity: finalTotalQuantity,
+          TotalAmount: finalTotalTagPrice,
+        }),
+      }
+    );
+  }
+
   const payload = {
     requestId: input.requestId,
     actorEmail: input.actorEmail,
@@ -185,8 +239,8 @@ export async function submitApprovalDecision(
     skuMismatches,
     transactionId: input.transactionId,
     detailViewUrl,
-    totalQuantity: input.totalQuantity ?? 0,
-    totalTagPrice: input.totalTagPrice ?? 0,
+    totalQuantity: finalTotalQuantity,
+    totalTagPrice: finalTotalTagPrice,
     purpose: input.purpose ?? "",
     status: input.status ?? "",
   };
@@ -206,6 +260,26 @@ export async function submitApprovalDecision(
   if (!res.ok) {
     const text = await res.text();
     throw new Error(text || `Flow call failed (${res.status})`);
+  }
+
+  // Persist RaiseCount / ApprovalCount for each mismatched item (best-effort, non-fatal)
+  if (input.action === "Approve" && skuMismatches.length > 0) {
+    try {
+      const CHUNK = 8;
+      for (let i = 0; i < skuMismatches.length; i += CHUNK) {
+        const chunk = skuMismatches.slice(i, i + CHUNK);
+        await Promise.all(
+          chunk.map((m) =>
+            spUpdateItem(input.context, "InventoryRequestItems", m.itemId, {
+              RaiseCount: m.requestedQty,
+              ApprovalCount: m.availableQty,
+            })
+          )
+        );
+      }
+    } catch (err) {
+      console.error("[ApprovalDecisionService] RaiseCount/ApprovalCount update failed:", err);
+    }
   }
 
   let resp: { status?: boolean | string; success?: boolean; message?: string; newStatus?: string } = {};

@@ -135,9 +135,10 @@ export default function AllRequestPage(
     const draftKey      = canonicalizeStatusFilterKey("Draft");
     const failedKey     = canonicalizeStatusFilterKey("Failed");
     const inApprovalKey = canonicalizeStatusFilterKey("In Approval");
+    const pendingKey    = canonicalizeStatusFilterKey("Pending");
     const exclude = (status: string): boolean => {
       const key = canonicalizeStatusFilterKey(status);
-      return key !== draftKey && key !== failedKey && key !== inApprovalKey;
+      return key !== draftKey && key !== failedKey && key !== inApprovalKey && key !== pendingKey;
     };
     const STATUS_ORDER = ["Approved", "Rejected", "Submitted"];
     const cleaned = dedupeLabels(choices, canonicalizeStatusFilterKey)
@@ -312,16 +313,14 @@ export default function AllRequestPage(
 
       if (statusFilter.length > 0) {
         const statusTerms: string[] = [];
-        const draftKey = canonicalizeStatusFilterKey("Draft");
+        const draftKey    = canonicalizeStatusFilterKey("Draft");
+        const pendingKey  = canonicalizeStatusFilterKey("Pending");
         statusFilter.forEach((status) => {
           const key = canonicalizeStatusFilterKey(status);
-          if (key === draftKey) {
+          if (key === draftKey || key === pendingKey) {
             return;
           }
-          if (key === canonicalizeStatusFilterKey("Pending")) {
-            statusTerms.push(`WorkflowStatus eq 'Pending'`);
-            statusTerms.push(`WorkflowStatus eq 'In Approval'`);
-          } else if (key === canonicalizeStatusFilterKey("Submitted")) {
+          if (key === canonicalizeStatusFilterKey("Submitted")) {
             // After C1 approves in a multi-stage chain the status becomes
             // "In Approval", but the user sees it as "Submitted" — both must
             // be included so the record doesn't vanish from the filter.

@@ -1495,6 +1495,22 @@ React.useEffect(() => {
     return json.Id;
   };
 
+  const resolveDisplayNameByEmail = async (email: string): Promise<string> => {
+    if (!email) return "";
+    try {
+      const url = `${context.pageContext.web.absoluteUrl}/_api/web/ensureUser('${email.replace(/'/g, "''")}')`;
+      const res = await context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
+        headers: { "Content-Type": "application/json;odata=verbose" },
+        body: JSON.stringify({})
+      });
+      if (!res.ok) return email;
+      const json = await res.json() as { Title?: string };
+      return String(json.Title || email).trim();
+    } catch {
+      return email;
+    }
+  };
+
   /* =========================================================
      SUBMIT
      ========================================================= */
@@ -1542,6 +1558,27 @@ React.useEffect(() => {
         ? await resolveUserIdByEmail(firstApproverEmail)
         : undefined;
 
+      // Build InitialApprovalEmail and ApprovalBy from the approval chain stages.
+      // Single approver (≤1 lakh): use first stage email + display name.
+      // Multiple approvers (>1 lakh): comma-join all stage emails + display names.
+      const parsedChainForFields = JSON.parse(chain.chainJSON) as {
+        stages?: Array<{ approverEmail: string }>;
+      };
+      const chainStagesList = parsedChainForFields.stages || [];
+      let initialApprovalEmail = "";
+      let approvalBy = "";
+      if (chain.stageCount <= 1) {
+        initialApprovalEmail = firstApproverEmail;
+        approvalBy = await resolveDisplayNameByEmail(firstApproverEmail);
+      } else {
+        const stageEmails = chainStagesList
+          .map(s => String(s.approverEmail || "").trim())
+          .filter(Boolean);
+        const displayNames = await Promise.all(stageEmails.map(e => resolveDisplayNameByEmail(e)));
+        initialApprovalEmail = stageEmails.join(", ");
+        approvalBy = displayNames.join(", ");
+      }
+
       // ✅ Shared approval fields — used in both paths
       const approvalFields: Record<string, unknown> = {
         RequestSubmittedOn: nowIso,
@@ -1575,6 +1612,8 @@ React.useEffect(() => {
         HasAttachments: inventoryMode === "excel",
         ExcelUploadFileName: inventoryMode === "excel" ? excelFileName : "",
         ErrorFlag: false,
+        InitialApprovalEmail: initialApprovalEmail,
+        ApprovalBy: approvalBy,
       };
 
       // =========================================================
