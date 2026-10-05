@@ -570,11 +570,44 @@ const spErrorMessage = async (res: SPHttpClientResponse): Promise<string> => {
   return txt || res.statusText || `HTTP ${res.status}`;
 };
 
+/** Pull the list title out of a `getbytitle('X')` REST URL for error messages. */
+const listTitleFromUrl = (apiUrl: string): string => {
+  const m = /getbytitle\('([^']+)'\)/i.exec(apiUrl);
+  return m ? decodeURIComponent(m[1]) : "SharePoint";
+};
+
+/**
+ * Wraps spErrorMessage with the list + operation that failed. A 403 / "Access is
+ * denied" is otherwise unattributable — the raw SharePoint body never says which
+ * list rejected the call, which makes permission gaps very hard to diagnose.
+ */
+const spErrorWithContext = async (
+  res: SPHttpClientResponse,
+  operation: string,
+  listTitle: string
+): Promise<string> => {
+  const base = await spErrorMessage(res);
+  const denied =
+    res.status === 401 ||
+    res.status === 403 ||
+    /access is denied|unauthorizedaccess|e_accessdenied/i.test(base);
+
+  if (denied) {
+    return (
+      `Access denied while trying to ${operation} the "${listTitle}" list. ` +
+      `Your account does not have the required permission on that list. ` +
+      `Please ask an administrator to grant you access to "${listTitle}". ` +
+      `[${base}]`
+    );
+  }
+  return `Failed to ${operation} the "${listTitle}" list: ${base}`;
+};
+
 export const spGet = async <T,>(context: WebPartContext, apiUrl: string): Promise<T> => {
   const res: SPHttpClientResponse = await context.spHttpClient.get(apiUrl, SPHttpClient.configurations.v1);
 
   if (!res.ok) {
-    throw new Error(await spErrorMessage(res));
+    throw new Error(await spErrorWithContext(res, "read", listTitleFromUrl(apiUrl)));
   }
   return (await res.json()) as T;
 };
@@ -597,7 +630,7 @@ export const spCreateItem = async <TBody extends object>(
   });
 
   if (!res.ok) {
-    throw new Error(await spErrorMessage(res));
+    throw new Error(await spErrorWithContext(res, "add an item to", listTitle));
   }
   return (await res.json()) as { Id: number };
 };
@@ -623,7 +656,7 @@ export const spUpdateItem = async <TBody extends object>(
   });
 
   if (!res.ok) {
-    throw new Error(await spErrorMessage(res));
+    throw new Error(await spErrorWithContext(res, "update an item in", listTitle));
   }
 };
 
@@ -683,24 +716,24 @@ export const getCurrentUserId = async (context: WebPartContext): Promise<number>
   const ctxId = Number(legacy?.userId || 0);
   if (ctxId > 0) return ctxId;
 
-  // 2) Fallback: resolve by email via siteusers
-  const email = String(context.pageContext.user?.email || "").trim();
-  if (!email) throw new Error("Cannot resolve user id: missing email in pageContext.");
-
+  // 2) Fallback: /_api/web/currentuser returns only the caller's own identity and is
+  //    readable by every authenticated user. The previous fallback used
+  //    /_api/web/siteusers, which enumerates all site users and therefore requires
+  //    elevated permissions — ordinary requesters got "Access is denied".
   const siteUrl = context.pageContext.web.absoluteUrl;
-  const url =
-    `${siteUrl}/_api/web/siteusers?$select=Id,Email&$filter=` +
-    encodeURIComponent(`Email eq '${email.replace(/'/g, "''")}'`);
+  const url = `${siteUrl}/_api/web/currentuser?$select=Id`;
 
   const res = await context.spHttpClient.get(url, SPHttpClient.configurations.v1, {
     headers: { Accept: "application/json;odata=nometadata", "odata-version": "" },
   });
 
-  if (!res.ok) throw new Error((await res.text()) || res.statusText);
+  if (!res.ok) {
+    throw new Error(await spErrorWithContext(res, "read the current user from", "Site"));
+  }
 
-  const json = (await res.json()) as { value: Array<{ Id: number; Email: string }> };
-  const id = Number(json.value?.[0]?.Id || 0);
-  if (!id) throw new Error("Cannot resolve user id from siteusers.");
+  const json = (await res.json()) as { Id?: number };
+  const id = Number(json?.Id || 0);
+  if (!id) throw new Error("Cannot resolve the current user's SharePoint ID.");
   return id;
 };
 

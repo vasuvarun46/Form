@@ -1125,7 +1125,9 @@ React.useEffect(() => {
       const isSubmittingNow =
         String(headerBody.WorkflowStatus || "") === "Submitted";
 
-      if (isSubmittingNow && flowUrl && inventoryMode === "manual") {
+      // Fetch live stock for BOTH manual and excel so StockAvailability reflects
+      // real warehouse stock at submit time (previously excel was skipped).
+      if (isSubmittingNow && flowUrl) {
         try {
           const json = await fetchProductFromAws(
             context.httpClient,
@@ -1687,7 +1689,9 @@ React.useEffect(() => {
 
         let liveStock: number = Number(it.maxStock ?? 0);
 
-        if (flowUrl && inventoryMode === "manual") {
+        // Fetch live stock for BOTH manual and excel so StockAvailability reflects
+        // real warehouse stock at submit time (previously excel was skipped).
+        if (flowUrl) {
           try {
             const json = await fetchProductFromAws(
               context.httpClient,

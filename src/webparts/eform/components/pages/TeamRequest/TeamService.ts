@@ -126,7 +126,9 @@ export interface ApprovalFlowPayload {
 
   // ── Stock shortage (Approve only; empty/false on Reject) ───
   quantityShort: boolean;       // true if skuMismatches.length > 0
-  skuMismatches: SkuMismatch[]; // empty array on Reject or when all stock OK
+  // liveStockQty is internal-only — excluded here because the Power Automate trigger
+  // schema rejects unknown properties (additionalProperties: false).
+  skuMismatches: Omit<SkuMismatch, "liveStockQty">[]; // empty on Reject or when all stock OK
 
   // ── Request-level fields for shortage email body ───────────
   transactionId: string; // Title / display TX ID
@@ -164,6 +166,9 @@ export interface SkuMismatch {
   availableQty: number;         // from WMS  (-1 = unverifiable)
   actualTotalTagPrice: number;  // tagPricePerUnit × availableQty (was: totalActualPrice)
   differenceQty: number;        // availableQty - requestedQty  (-1 = unverifiable)
+  // Actual live warehouse stock (Warehouse_SOH_Qty) from the API — used for the
+  // StockAvailability column. Distinct from availableQty (which drives ApprovalCount).
+  liveStockQty: number;
 }
 
 
@@ -991,6 +996,8 @@ export function useTeamRequestsLogic(
       invalidItems: ApprovalInvalidItem[];
       skuMismatches: SkuMismatch[];
       quantityShort: boolean;
+      allItemResults: SkuMismatch[];
+      hasZeroStockItem: boolean;
     }> => {
       const requestId = Number(row.spId || 0);
       if (!requestId) {
@@ -999,12 +1006,19 @@ export function useTeamRequestsLogic(
           invalidItems: [{ itemId: 0, sku: "-", qty: 0, unitPrice: 0, message: "Invalid request id." }],
           skuMismatches: [],
           quantityShort: false,
+          allItemResults: [],
+          hasZeroStockItem: false,
         };
       }
 
       const items = await getActiveRequestItems(requestId);
       const invalidItems: ApprovalInvalidItem[] = [];
       const skuMismatches: SkuMismatch[] = [];
+      // Every checked item (mismatch or not) — used to persist RaiseCount/ApprovalCount
+      // for every SKU on final approval, not just mismatched ones.
+      const allItemResults: SkuMismatch[] = [];
+      // True when any SKU's live stock came back as zero/unavailable — blocks approval entirely.
+      let hasZeroStockItem = false;
 
       const requestTotalTagPrice = items.reduce((sum, it) => {
         return sum + (Number(it.Quantity || 0) * Number(it.UnitPrice || 0));
@@ -1014,7 +1028,7 @@ export function useTeamRequestsLogic(
       for (const it of items) {
         const reqQty = Number(it.Quantity || 0);
         if (reqQty === 0) {
-          skuMismatches.push({
+          const entry: SkuMismatch = {
             itemId: Number(it.Id || 0),
             sku: String(it.SKUCode || "-").trim() || "-",
             tagPricePerUnit: Number(it.UnitPrice || 0),
@@ -1023,7 +1037,10 @@ export function useTeamRequestsLogic(
             availableQty: 0,
             actualTotalTagPrice: 0,
             differenceQty: 0,
-          });
+            liveStockQty: 0,
+          };
+          skuMismatches.push(entry);
+          allItemResults.push(entry);
         }
       }
 
@@ -1035,6 +1052,8 @@ export function useTeamRequestsLogic(
           invalidItems: [],
           skuMismatches,
           quantityShort,
+          allItemResults,
+          hasZeroStockItem,
         };
       }
 
@@ -1055,6 +1074,7 @@ export function useTeamRequestsLogic(
 
             if (!flow || liveStock <= 0) {
               // ── OUT OF STOCK ────────────────────────────────────────────
+              hasZeroStockItem = true;
               invalidItems.push({
                 itemId,
                 sku,
@@ -1062,16 +1082,21 @@ export function useTeamRequestsLogic(
                 unitPrice,
                 message: `SKU "${sku}" is out of stock.`,
               });
-              skuMismatches.push({
-                itemId,
-                sku,
-                tagPricePerUnit: unitPrice,
-                requestedQty: reqQty,
-                totalTagPrice,                 // requestedQty × tagPricePerUnit
-                availableQty: 0,
-                actualTotalTagPrice: 0,        // 0 stock → 0 actual total
-                differenceQty: 0 - reqQty, // always negative
-              });
+              {
+                const entry: SkuMismatch = {
+                  itemId,
+                  sku,
+                  tagPricePerUnit: unitPrice,
+                  requestedQty: reqQty,
+                  totalTagPrice,                 // requestedQty × tagPricePerUnit
+                  availableQty: 0,
+                  actualTotalTagPrice: 0,        // 0 stock → 0 actual total
+                  differenceQty: 0 - reqQty, // always negative
+                  liveStockQty: 0,
+                };
+                skuMismatches.push(entry);
+                allItemResults.push(entry);
+              }
 
             } else if (reqQty > liveStock) {
               // ── PARTIAL STOCK ───────────────────────────────────────────
@@ -1082,19 +1107,37 @@ export function useTeamRequestsLogic(
                 unitPrice,
                 message: `Only ${liveStock} pcs available. Requested: ${reqQty}.`,
               });
-              skuMismatches.push({
+              {
+                const entry: SkuMismatch = {
+                  itemId,
+                  sku,
+                  tagPricePerUnit: unitPrice,
+                  requestedQty: reqQty,
+                  totalTagPrice,                       // original total at requested qty
+                  availableQty: liveStock,
+                  actualTotalTagPrice: liveStock * unitPrice, // actual total at available qty
+                  differenceQty: liveStock - reqQty,    // negative = shortfall
+                  liveStockQty: liveStock,
+                };
+                skuMismatches.push(entry);
+                allItemResults.push(entry);
+              }
+
+            } else {
+              // ── QTY OK — sufficient stock, no mismatch, but still record it ──
+              // ApprovalCount = the requested qty itself (fully available);
+              // StockAvailability = actual live stock.
+              allItemResults.push({
                 itemId,
                 sku,
                 tagPricePerUnit: unitPrice,
                 requestedQty: reqQty,
-                totalTagPrice,                       // original total at requested qty
-                availableQty: liveStock,
-                actualTotalTagPrice: liveStock * unitPrice, // actual total at available qty
-                differenceQty: liveStock - reqQty,    // negative = shortfall
+                totalTagPrice,
+                availableQty: reqQty,
+                actualTotalTagPrice: totalTagPrice,
+                differenceQty: 0,
+                liveStockQty: liveStock,
               });
-
-            } else {
-              // ── QTY OK — sufficient stock, no entry needed ──────────────────
             }
 
           } catch {
@@ -1106,16 +1149,21 @@ export function useTeamRequestsLogic(
               unitPrice,
               message: `Unable to verify stock for SKU "${sku}".`,
             });
-            skuMismatches.push({
-              itemId,
-              sku,
-              tagPricePerUnit: unitPrice,
-              requestedQty: reqQty,
-              totalTagPrice,
-              availableQty: -1,  // -1 sentinel = unverifiable
-              actualTotalTagPrice: -1,
-              differenceQty: -1,
-            });
+            {
+              const entry: SkuMismatch = {
+                itemId,
+                sku,
+                tagPricePerUnit: unitPrice,
+                requestedQty: reqQty,
+                totalTagPrice,
+                availableQty: -1,  // -1 sentinel = unverifiable
+                actualTotalTagPrice: -1,
+                differenceQty: -1,
+                liveStockQty: -1,
+              };
+              skuMismatches.push(entry);
+              allItemResults.push(entry);
+            }
           }
 
         } else {
@@ -1140,6 +1188,8 @@ export function useTeamRequestsLogic(
         invalidItems,
         skuMismatches,
         quantityShort,
+        allItemResults,
+        hasZeroStockItem,
       };
     },
     [getActiveRequestItems, context, productFlowUrl]
@@ -1243,13 +1293,26 @@ export function useTeamRequestsLogic(
       // ── STOCK VALIDATION (Approve only) ────────────────────────────────
       let quantityShort = false;
       let skuMismatches: SkuMismatch[] = [];
+      // Every checked item (mismatch or not) — used to persist RaiseCount/ApprovalCount
+      // for every SKU on final approval, not just mismatched ones.
+      let allItemResults: SkuMismatch[] = [];
       let finalTotalQty = row.qty;
       let finalTotalAmount = row.price;
+      // Final approver = the one whose action should persist mismatch data to
+      // SharePoint. Single-approver records: any approver is final. Multi-stage
+      // records: only the approver at the highest order is final.
+      let isFinalApprover = false;
 
       if (action === "Approve") {
         const check = await validateRequestItemsBeforeApprove(row);
         quantityShort = check.quantityShort;
         skuMismatches = check.skuMismatches;
+        allItemResults = check.allItemResults;
+
+        // Hard block: any SKU with zero live stock cannot be approved at all.
+        if (check.hasZeroStockItem) {
+          throw new Error("Stock availability for the particular record is zero, so you can't approve this record.");
+        }
 
         // ── FINAL APPROVER DETECTION ────────────────────────────────────
         // The final approver is the one at the highest order in the approval
@@ -1259,80 +1322,58 @@ export function useTeamRequestsLogic(
         const activeLevels = row.allApprovalLevels.filter(
           (l) => l.canApproveRequest === true
         );
-        let isFinalApprover = false;
-        if (activeLevels.length > 0) {
+        if (!row.hasMultipleApprovals) {
+          // Single-approver record — always the final approver
+          isFinalApprover = true;
+        } else if (activeLevels.length > 0) {
+          // Multi-approver: final = the approver at the highest order
           const maxOrder = Math.max(...activeLevels.map((l) => l.order));
           isFinalApprover = activeLevels.some(
             (l) => l.approverEmail === loginEmail && l.order === maxOrder
           );
-        } else if (!row.hasMultipleApprovals) {
-          // Single-approver record with no level data — they are always final
-          isFinalApprover = true;
         }
 
-        // ── UPDATE SP QUANTITIES (Final Approver only, verifiable mismatches) ─
-        // All SharePoint writes must complete before Power Automate is called.
-        if (isFinalApprover && quantityShort && skuMismatches.length > 0) {
-          const requestId = Number(row.spId || 0);
-
-          for (const mismatch of skuMismatches) {
-            // Skip unverifiable items (availableQty === -1 sentinel)
-            if (mismatch.availableQty === -1) continue;
-            const approvedQty = Math.max(0, mismatch.availableQty);
-            await context.spHttpClient.post(
-              `${siteUrl}/_api/web/lists/getbytitle('InventoryRequestItems')/items(${mismatch.itemId})`,
-              SPHttpClient.configurations.v1,
-              {
-                headers: {
-                  Accept: "application/json;odata=nometadata",
-                  "Content-Type": "application/json;odata=nometadata",
-                  "odata-version": "",
-                  "IF-MATCH": "*",
-                  "X-HTTP-Method": "MERGE",
-                },
-                body: JSON.stringify({
-                  Quantity: approvedQty,
-                  LineTotal: approvedQty * mismatch.tagPricePerUnit,
-                }),
-              }
-            );
+        // The final approver adjusts short-stock quantities. IMPORTANT: nothing is
+        // written to SharePoint before the Power Automate call — if PA errors, no list
+        // change occurs. Here we only COMPUTE the adjusted totals (in memory) so the PA
+        // payload carries the final figures; the actual writes happen AFTER PA succeeds.
+        // Totals are SUMMED from the approved quantity of every line item — never
+        // derived by subtracting from a cached header total, which could be stale and
+        // drive the result negative. Summing non-negative values can never go below 0.
+        if (isFinalApprover && quantityShort && skuMismatches.length > 0 && allItemResults.length > 0) {
+          let qtySum = 0;
+          let priceSum = 0;
+          for (const m of allItemResults) {
+            const requested = Number.isFinite(Number(m.requestedQty)) ? Number(m.requestedQty) : 0;
+            const availRaw = Number(m.availableQty);
+            // Unverifiable stock (-1) keeps the requested quantity.
+            const adjQty =
+              !Number.isFinite(availRaw) || availRaw === -1 ? requested : Math.max(0, availRaw);
+            const unitPrice = Number.isFinite(Number(m.tagPricePerUnit)) ? Number(m.tagPricePerUnit) : 0;
+            qtySum += adjQty;
+            priceSum += adjQty * unitPrice;
           }
-
-          // Re-fetch all active items to calculate accurate updated totals
-          const updatedItems = await getActiveRequestItems(requestId);
-          finalTotalQty = updatedItems.reduce(
-            (sum, x) => sum + Number(x.Quantity || 0),
-            0
-          );
-          finalTotalAmount = updatedItems.reduce(
-            (sum, x) => sum + Number(x.Quantity || 0) * Number(x.UnitPrice || 0),
-            0
-          );
-
-          // Persist new totals to InventoryRequests before triggering PA
-          await context.spHttpClient.post(
-            `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items(${requestId})`,
-            SPHttpClient.configurations.v1,
-            {
-              headers: {
-                Accept: "application/json;odata=nometadata",
-                "Content-Type": "application/json;odata=nometadata",
-                "odata-version": "",
-                "IF-MATCH": "*",
-                "X-HTTP-Method": "MERGE",
-              },
-              body: JSON.stringify({
-                TotalQuantity: finalTotalQty,
-                TotalAmount: finalTotalAmount,
-              }),
-            }
-          );
+          finalTotalQty = Math.max(0, qtySum);
+          finalTotalAmount = Math.max(0, priceSum);
         }
       }
 
       // ── DETAIL VIEW URL ────────────────────────────────────────────────
       const siteOrigin = String(context.pageContext.web.absoluteUrl || "").replace(/\/$/, "");
       const detailViewUrl = `${siteOrigin}/SitePages/RequestDetail.aspx?requestId=${row.spId}`;
+
+      // Strip the internal-only liveStockQty field — the Power Automate trigger schema
+      // rejects unknown properties (additionalProperties: false).
+      const payloadSkuMismatches = skuMismatches.map((m) => ({
+        itemId: m.itemId,
+        sku: m.sku,
+        tagPricePerUnit: m.tagPricePerUnit,
+        requestedQty: m.requestedQty,
+        totalTagPrice: m.totalTagPrice,
+        availableQty: m.availableQty,
+        actualTotalTagPrice: m.actualTotalTagPrice,
+        differenceQty: m.differenceQty,
+      }));
 
       // ── PAYLOAD ────────────────────────────────────────────────────────
       // totalQuantity / totalTagPrice carry the post-adjustment values so
@@ -1345,7 +1386,7 @@ export function useTeamRequestsLogic(
         action: action as FlowAction,
         comments: comments || "",
         quantityShort,
-        skuMismatches,
+        skuMismatches: payloadSkuMismatches,
         transactionId: row.id,
         detailViewUrl,
         totalQuantity: finalTotalQty,
@@ -1369,15 +1410,70 @@ export function useTeamRequestsLogic(
       const msg = toUserMessage(resp?.message, ok ? "Success" : "Failed");
       const newStatus = resp?.newStatus ? String(resp.newStatus) : undefined;
 
-      // Persist RaiseCount / ApprovalCount for each mismatched item (best-effort, non-fatal)
-      if (action === "Approve" && skuMismatches.length > 0) {
+      // PA succeeded (spPostJson throws on HTTP error) — persist the adjusted header
+      // totals. NOTE: the line-item Quantity/LineTotal are intentionally NOT overwritten
+      // — the originally requested quantity stays intact and the approved figure is
+      // recorded in ApprovalCount instead.
+      if (isFinalApprover && action === "Approve" && quantityShort && skuMismatches.length > 0) {
+        await context.spHttpClient.post(
+          `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items(${Number(row.spId || 0)})`,
+          SPHttpClient.configurations.v1,
+          {
+            headers: {
+              Accept: "application/json;odata=nometadata",
+              "Content-Type": "application/json;odata=nometadata",
+              "odata-version": "",
+              "IF-MATCH": "*",
+              "X-HTTP-Method": "MERGE",
+            },
+            body: JSON.stringify({
+              // Hard guard: never store a negative total in SharePoint.
+              TotalQuantity: Math.max(0, Number(finalTotalQty) || 0),
+              TotalAmount: Math.max(0, Number(finalTotalAmount) || 0),
+            }),
+          }
+        );
+      }
+
+      // Persist RaiseCount / ApprovalCount / StockAvailability for every checked item —
+      // mismatched or not (best-effort, non-fatal). Same final-approver rule as the
+      // Quantity/Total update above — intermediate approvers in a multi-stage chain
+      // must not write.
+      console.log("[EForm Approval] column-write gate:", {
+        isFinalApprover,
+        action,
+        allItemResults: allItemResults.length,
+        willWrite: isFinalApprover && action === "Approve" && allItemResults.length > 0,
+      });
+      if (isFinalApprover && action === "Approve" && allItemResults.length > 0) {
         try {
           const CHUNK = 8;
-          for (let i = 0; i < skuMismatches.length; i += CHUNK) {
-            const chunk = skuMismatches.slice(i, i + CHUNK);
+          for (let i = 0; i < allItemResults.length; i += CHUNK) {
+            const chunk = allItemResults.slice(i, i + CHUNK);
             await Promise.all(
-              chunk.map((m) =>
-                context.spHttpClient.post(
+              chunk.map((m) => {
+                // Coerce to finite numbers — an undefined/NaN value would be dropped or
+                // sent as null by JSON.stringify, leaving the column blank.
+                const requested = Number.isFinite(Number(m.requestedQty)) ? Number(m.requestedQty) : 0;
+                const availRaw = Number(m.availableQty);
+                // Items whose live stock could not be verified (-1) still record
+                // RaiseCount/ApprovalCount from the requested quantity; only
+                // StockAvailability is omitted, since the live figure is unknown.
+                const approved =
+                  !Number.isFinite(availRaw) || availRaw === -1 ? requested : availRaw;
+                const unitPrice = Number.isFinite(Number(m.tagPricePerUnit))
+                  ? Number(m.tagPricePerUnit)
+                  : 0;
+                const fields: Record<string, number> = {
+                  RaiseCount: requested,
+                  ApprovalCount: approved,
+                  // LineTotal reflects the APPROVED quantity (Quantity itself is left as
+                  // originally requested), so it matches the header TotalAmount.
+                  LineTotal: Math.max(0, approved * unitPrice),
+                };
+                const liveRaw = Number(m.liveStockQty);
+                if (Number.isFinite(liveRaw) && liveRaw >= 0) fields.StockAvailability = liveRaw;
+                return context.spHttpClient.post(
                   `${siteUrl}/_api/web/lists/getbytitle('InventoryRequestItems')/items(${m.itemId})`,
                   SPHttpClient.configurations.v1,
                   {
@@ -1388,15 +1484,15 @@ export function useTeamRequestsLogic(
                       "IF-MATCH": "*",
                       "X-HTTP-Method": "MERGE",
                     },
-                    body: JSON.stringify({
-                      RaiseCount: m.requestedQty,
-                      ApprovalCount: m.availableQty,
-                    }),
+                    body: JSON.stringify(fields),
                   }
-                )
-              )
+                );
+              })
             );
           }
+          console.log(
+            `[EForm Approval] Wrote RaiseCount/ApprovalCount/StockAvailability for ${allItemResults.length} item(s).`
+          );
         } catch (err) {
           console.error("[TeamService] RaiseCount/ApprovalCount update failed:", err);
         }

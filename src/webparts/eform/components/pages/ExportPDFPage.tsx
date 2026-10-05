@@ -100,6 +100,9 @@ type LineItem = {
   size: string;
   unitPrice: number;
   quantity: number;
+  // Approved quantity written on final approval. null when not set (not yet approved,
+  // or legacy records) — the Quantity column falls back to `quantity` then.
+  approvalCount: number | null;
   lineTotal: number;
   lookupSource: string;
   rowStatus: string;
@@ -617,6 +620,8 @@ export default function ExportPDFPage({
   const [actionSubmitting, setActionSubmitting] = React.useState(false);
   const [editQtyPopupOpen, setEditQtyPopupOpen] = React.useState(false);
   const [editRows, setEditRows] = React.useState<InvalidItem[]>([]);
+  // Blocking error popup (e.g. zero-stock approval block) — stays on page.
+  const [blockError, setBlockError] = React.useState<string>("");
 
   React.useEffect(() => {
     if (!toast) return;
@@ -1098,7 +1103,13 @@ export default function ExportPDFPage({
       } catch (err: unknown) {
         const message =
           err instanceof Error && err.message.trim() ? err.message : "Action failed";
-        onNavigate("team", { toastType: "error", toastMessage: message });
+        // Approval blocks (e.g. zero stock) must stay on the page and show a
+        // proper error popup instead of navigating away with a toast.
+        if (action === "Approve") {
+          setBlockError(message);
+        } else {
+          onNavigate("team", { toastType: "error", toastMessage: message });
+        }
       } finally {
         setActionSubmitting(false);
         setActionModalOpen(false);
@@ -1183,6 +1194,7 @@ export default function ExportPDFPage({
         const colSize = "Size";
         const colUnitPrice = "UnitPrice";
         const colQty = "Quantity";
+        const colApprovalCount = "ApprovalCount";
         const colLineTotal = "LineTotal";
         const colLookupSource = "LookupSource";
         const colRowStatus = "RowStatus";
@@ -1224,6 +1236,7 @@ export default function ExportPDFPage({
           colSize,
           colUnitPrice,
           colQty,
+          colApprovalCount,
           colLineTotal,
           colLookupSource,
           colRowStatus,
@@ -1247,7 +1260,7 @@ export default function ExportPDFPage({
           // Fallback: try without expand (use numeric lookup field directly)
           const urlNumber =
             `${webUrl}/_api/web/lists/getbytitle('${childListTitle}')/items` +
-            `?$select=Id,${colTitle},${colLineNumber},${colSku},${colDesc},${colColor},${colSize},${colUnitPrice},${colQty},${colLineTotal},${colLookupSource},${colRowStatus},${requestLookupInternal}` +
+            `?$select=Id,${colTitle},${colLineNumber},${colSku},${colDesc},${colColor},${colSize},${colUnitPrice},${colQty},${colApprovalCount},${colLineTotal},${colLookupSource},${colRowStatus},${requestLookupInternal}` +
             `&$filter=${requestLookupInternal} eq ${spId} and ${colRowStatus} eq 'Active'` +
             `&$orderby=${colLineNumber} asc` +
             `&$top=5000`;
@@ -1265,6 +1278,11 @@ export default function ExportPDFPage({
           const size = String(x[colSize] ?? "");
           const unitPrice = Number(x[colUnitPrice] ?? 0);
           const quantity = Number(x[colQty] ?? 0);
+          const approvalCountRaw = x[colApprovalCount];
+          const approvalCount =
+            approvalCountRaw === null || approvalCountRaw === undefined
+              ? null
+              : Number(approvalCountRaw);
           const lineTotalRaw = x[colLineTotal];
           const lineTotal =
             typeof lineTotalRaw === "number"
@@ -1283,6 +1301,7 @@ export default function ExportPDFPage({
             size,
             unitPrice,
             quantity,
+            approvalCount,
             lineTotal,
             lookupSource,
             rowStatus,
@@ -1415,7 +1434,14 @@ export default function ExportPDFPage({
   const isRejectModal = pendingAction === "Reject";
   const rejectReasonEmpty = isRejectModal && !actionComments.trim();
   const confirmDisabled = actionSubmitting || rejectReasonEmpty;
-  const totalQty = lineItems.reduce((s, x) => s + x.quantity, 0);
+  // Before approval the Quantity column shows the requested quantity. Once the record
+  // is approved it shows the approved quantity (ApprovalCount) instead.
+  const isFinallyApproved =
+    normalizeApprovalStatus(exportData?.workflowStatus) === "Approved";
+  const getDisplayQty = (r: LineItem): number =>
+    isFinallyApproved && r.approvalCount !== null ? r.approvalCount : r.quantity;
+
+  const totalQty = lineItems.reduce((s, x) => s + getDisplayQty(x), 0);
   const totalPrice = lineItems.reduce((s, x) => s + x.lineTotal, 0);
 
   const renderItemsTable = (
@@ -1481,7 +1507,7 @@ export default function ExportPDFPage({
               <td className={isDesktopTable ? "px-3 py-3 text-right align-top" : "px-1 sm:px-2 py-2 text-right align-top"}>
                 {r.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </td>
-              <td className={isDesktopTable ? "px-3 py-3 text-right align-top" : "px-1 sm:px-2 py-2 text-right align-top"}>{r.quantity.toLocaleString()}</td>
+              <td className={isDesktopTable ? "px-3 py-3 text-right align-top" : "px-1 sm:px-2 py-2 text-right align-top"}>{getDisplayQty(r).toLocaleString()}</td>
               <td className={isDesktopTable ? "px-3 py-3 text-right align-top" : "px-1 sm:px-2 py-2 text-right align-top"}>
                 {r.lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </td>
@@ -1857,6 +1883,49 @@ export default function ExportPDFPage({
                   : pendingAction}
               </button>
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {blockError && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/30" onClick={() => setBlockError("")} />
+          <div className="relative w-[92%] max-w-[430px] rounded-[24px] border border-[#ebebeb] bg-white px-9 pb-8 pt-6 shadow-[0_20px_45px_rgba(0,0,0,0.18)]">
+            <button
+              className="absolute right-5 top-5 text-[#bcbcbc] hover:text-[#9a9a9a]"
+              onClick={() => setBlockError("")}
+              aria-label="Close"
+            >
+              <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M6 6L18 18M18 6L6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </button>
+
+            <div className="mt-4 flex justify-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#fdecec]">
+                <svg className="h-8 w-8 text-[#DA2128]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 8v5M12 16.5v.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
+                </svg>
+              </div>
+            </div>
+
+            <h2 className="mt-4 text-center text-[17px] leading-tight font-semibold text-black">
+              Cannot Approve
+            </h2>
+
+            <p className="mx-auto mt-3 max-w-[560px] text-center text-[14px] leading-[1.45] text-[#5f5f5f]">
+              {blockError}
+            </p>
+
+            <div className="mt-7">
+              <button
+                className="h-[46px] w-full rounded-[10px] bg-[#DA2128] text-[16px] leading-none font-semibold text-white hover:bg-[#AF0007]"
+                onClick={() => setBlockError("")}
+              >
+                OK
+              </button>
             </div>
           </div>
         </div>

@@ -139,6 +139,8 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
   const [pendingAction, setPendingAction] = React.useState<PendingAction>("Approve");
   const [actionComments, setActionComments] = React.useState<string>("");
   const [actionSubmitting, setActionSubmitting] = React.useState<boolean>(false);
+  // Blocking error popup (e.g. zero-stock approval block).
+  const [blockError, setBlockError] = React.useState<string>("");
 
   const {
     loading,
@@ -283,7 +285,14 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
       closeActionModal(true);
       reload().catch(() => undefined);
     } catch (e: unknown) {
-      setToast({ type: "error", message: toUserMessage(e, "Action failed") });
+      // Approval blocks (e.g. zero stock) show a proper error popup, not a toast.
+      const message = toUserMessage(e, "Action failed");
+      closeActionModal(true);
+      if (pendingAction === "Approve") {
+        setBlockError(message);
+      } else {
+        setToast({ type: "error", message });
+      }
     } finally {
       setActionSubmitting(false);
     }
@@ -876,6 +885,50 @@ export default function TeamRequestsPage(props: TeamRequestsPageProps): JSX.Elem
                         ? "Approving..."
                         : "Rejecting..."
                       : pendingAction}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ZERO-STOCK / APPROVAL BLOCK ERROR POPUP */}
+          {blockError && (
+            <div className="fixed inset-0 z-[1000] flex items-center justify-center">
+              <div className="absolute inset-0 bg-black/30" onClick={() => setBlockError("")} />
+              <div className="relative w-[92%] max-w-[430px] rounded-[24px] border border-[#ebebeb] bg-white px-9 pb-8 pt-6 shadow-[0_20px_45px_rgba(0,0,0,0.18)]">
+                <button
+                  className="absolute right-5 top-5 text-[#bcbcbc] hover:text-[#9a9a9a]"
+                  onClick={() => setBlockError("")}
+                  aria-label="Close"
+                >
+                  <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M6 6L18 18M18 6L6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
+                </button>
+
+                <div className="mt-4 flex justify-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#fdecec]">
+                    <svg className="h-8 w-8 text-[#DA2128]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M12 8v5M12 16.5v.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
+                    </svg>
+                  </div>
+                </div>
+
+                <h2 className="mt-4 text-center text-[17px] leading-tight font-semibold text-black">
+                  Cannot Approve
+                </h2>
+
+                <p className="mx-auto mt-3 max-w-[560px] text-center text-[14px] leading-[1.45] text-[#5f5f5f]">
+                  {blockError}
+                </p>
+
+                <div className="mt-7">
+                  <button
+                    className="h-[46px] w-full rounded-[10px] bg-[#DA2128] text-[16px] leading-none font-semibold text-white hover:bg-[#AF0007]"
+                    onClick={() => setBlockError("")}
+                  >
+                    OK
                   </button>
                 </div>
               </div>
