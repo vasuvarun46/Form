@@ -24,7 +24,7 @@ interface Props {
 export default function AppShell({
   children, activeRoute, onNavigate, onGoForm, context, exportSource, setRuntimeFlowUrl, permissions, hideTeamRoute,
 }: Props): JSX.Element {
-  const isDesktop = useIsDesktop(1285);
+  const isDesktop = useIsDesktop(1024);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
 

@@ -1,8 +1,9 @@
 // pages/CreateRequestPage.logic.ts
 import * as XLSX from "xlsx";
-import { WebPartContext } from "@microsoft/sp-webpart-base";
-import { SPHttpClient, SPHttpClientResponse, HttpClient } from "@microsoft/sp-http";
-import { CostCenterOption, FlowItemResponse, IItemRow, ISuparaItem, ItemRowErrors, IUsageState, ODataResponse, PurposeOption, SPFileItem } from "./createRequestTypes";
+import type { WebPartContext } from "@microsoft/sp-webpart-base";
+import { SPHttpClient, HttpClient } from "@microsoft/sp-http";
+import type { SPHttpClientResponse } from "@microsoft/sp-http";
+import type { CostCenterOption, FlowItemResponse, IItemRow, ISuparaItem, ItemRowErrors, IUsageState, ODataResponse, PurposeOption, SPFileItem } from "./createRequestTypes";
 
 
 /* =========================================================
@@ -1778,4 +1779,4 @@ export const validateExcelItemsWithFlowBulk = async (
   return { rowErrors, messages, finalItems: renumbered };
 };
 
-export { IUsageState, ISuparaItem, IItemRow, FlowItemResponse };
+export type { IUsageState, ISuparaItem, IItemRow, FlowItemResponse };

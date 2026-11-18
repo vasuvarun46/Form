@@ -1,42 +1,35 @@
 {
-  "extends": "./node_modules/@microsoft/rush-stack-compiler-4.7/includes/tsconfig-web.json",
   "compilerOptions": {
-    "target": "es5",
-    "forceConsistentCasingInFileNames": true,
-    "module": "esnext",
+    "target": "ES2017",
+    "module": "ESNext",
     "moduleResolution": "node",
     "jsx": "react",
-    "declaration": true,
-    "sourceMap": true,
+    "lib": ["ES2017", "DOM", "DOM.Iterable"],
+    "strict": false,
+    "noImplicitAny": true,
+    "forceConsistentCasingInFileNames": true,
     "experimentalDecorators": true,
     "skipLibCheck": true,
-    "outDir": "lib",
-    "inlineSources": false,
-    "noImplicitAny": true,
-
+    "declaration": false,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": false,
+    "baseUrl": ".",
+    "paths": {
+      "@microsoft/sp-webpart-base": ["./src/lib/spShim.ts"],
+      "@microsoft/sp-http": ["./src/lib/spShim.ts"],
+      "@microsoft/sp-core-library": ["./src/lib/spShim.ts"],
+      "@microsoft/sp-component-base": ["./src/lib/spShim.ts"],
+      "@microsoft/sp-property-pane": ["./src/lib/spShim.ts"]
+    },
     "typeRoots": [
-      "./node_modules/@types",
-      "./node_modules/@microsoft"
+      "./node_modules/@types"
     ],
-
     "types": [
-      "webpack-env",
-      "jest",        // ✅ ADDED
-      "node" ,        // ✅ ADDED
-        "@testing-library/jest-dom"   // ✅ ADD THIS
-
-    ],
-
-    "lib": [
-      "es5",
-      "dom",
-      "es2015.collection",
-      "es2015.promise"
+      "jest",
+      "node"
     ]
   },
-
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx"
-  ]
+  "include": ["src", "vite.config.ts"]
 }

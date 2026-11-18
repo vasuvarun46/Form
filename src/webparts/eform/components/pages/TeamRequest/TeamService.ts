@@ -14,7 +14,7 @@
 
 import * as React from "react";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
-import { HttpClient, SPHttpClient } from "@microsoft/sp-http";
+import { SPHttpClient } from "@microsoft/sp-http";
 
 import {
   canonicalizeStatusFilterKey,
@@ -26,6 +26,7 @@ import {
   fetchProductFromAws,
   normalizeFlowToRow,
 } from "../CreateRequestPage/CreateRequestService";
+import { processApproval } from "../../ApprovalProcessor";
 
 /* =========================================================
    TYPES
@@ -280,38 +281,6 @@ async function spGetJson(
     throw new Error(`SP GET failed (${res.status}): ${text}`);
   }
   return await res.json();
-}
-
-async function spPostJson(
-  context: WebPartContext,
-  url: string,
-  body: any,
-  extraHeaders?: Record<string, string>
-): Promise<any> {
-
-
-  const res = await context.httpClient.post(
-    url,
-    HttpClient.configurations.v1,
-    {
-      headers: {
-        "Content-Type": "application/json",
-        ...(extraHeaders || {}),
-      },
-      body: JSON.stringify(body),
-    }
-  );
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`SP POST failed (${res.status}): ${text}`);
-  }
-  try {
-    return await res.json();
-  } catch {
-    const text = await res.text();
-    return text ? { message: text } : {};
-  }
 }
 
 function pickApiKey(configItems: any[]): string | undefined {
@@ -997,7 +966,6 @@ export function useTeamRequestsLogic(
       skuMismatches: SkuMismatch[];
       quantityShort: boolean;
       allItemResults: SkuMismatch[];
-      hasZeroStockItem: boolean;
     }> => {
       const requestId = Number(row.spId || 0);
       if (!requestId) {
@@ -1007,7 +975,6 @@ export function useTeamRequestsLogic(
           skuMismatches: [],
           quantityShort: false,
           allItemResults: [],
-          hasZeroStockItem: false,
         };
       }
 
@@ -1017,12 +984,6 @@ export function useTeamRequestsLogic(
       // Every checked item (mismatch or not) — used to persist RaiseCount/ApprovalCount
       // for every SKU on final approval, not just mismatched ones.
       const allItemResults: SkuMismatch[] = [];
-      // True when any SKU's live stock came back as zero/unavailable — blocks approval entirely.
-      let hasZeroStockItem = false;
-
-      const requestTotalTagPrice = items.reduce((sum, it) => {
-        return sum + (Number(it.Quantity || 0) * Number(it.UnitPrice || 0));
-      }, 0);
 
       // Pre-scan: items with qty=0 are always a shortage (no quantity was specified)
       for (const it of items) {
@@ -1037,26 +998,19 @@ export function useTeamRequestsLogic(
             availableQty: 0,
             actualTotalTagPrice: 0,
             differenceQty: 0,
-            liveStockQty: 0,
+            // No stock API call is made for zero-qty lines, so the live figure is
+            // unknown. -1 is the "unverifiable" sentinel, which makes the write skip
+            // StockAvailability instead of destroying the previously stored value.
+            liveStockQty: -1,
           };
           skuMismatches.push(entry);
           allItemResults.push(entry);
         }
       }
 
-      // If total tag price is still 0 after accounting for zero-qty items, skip WMS checks
-      if (requestTotalTagPrice === 0) {
-        const quantityShort = skuMismatches.length > 0;
-        return {
-          ok: true,
-          invalidItems: [],
-          skuMismatches,
-          quantityShort,
-          allItemResults,
-          hasZeroStockItem,
-        };
-      }
-
+      // The stock check runs for every request regardless of its tag price, so a
+      // zero-priced item still gets a real StockAvailability figure. (Matches
+      // ApprovalDecisionService, which never skipped the check.)
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
         const reqQty = Number(it.Quantity || 0);
@@ -1073,8 +1027,7 @@ export function useTeamRequestsLogic(
             const liveStock = Number(flow?.Warehouse_SOH_Qty ?? 0);
 
             if (!flow || liveStock <= 0) {
-              // ── OUT OF STOCK ────────────────────────────────────────────
-              hasZeroStockItem = true;
+              // ── OUT OF STOCK (zero/negative) — approved at qty 0, not blocked ──
               invalidItems.push({
                 itemId,
                 sku,
@@ -1177,7 +1130,22 @@ export function useTeamRequestsLogic(
               message: "Quantity must be between 1 and 999.",
             });
           }
-          // No WMS URL — cannot verify stock, no mismatch entry added.
+          // No WMS URL — cannot verify stock, so no mismatch entry. The line is
+          // still recorded so allItemResults covers EVERY active item: the totals
+          // are summed from it, and omitting these would total only the zero-qty
+          // lines and wipe the header. liveStockQty -1 leaves StockAvailability
+          // untouched; the approved qty is the requested qty.
+          allItemResults.push({
+            itemId,
+            sku,
+            tagPricePerUnit: unitPrice,
+            requestedQty: reqQty,
+            totalTagPrice,
+            availableQty: reqQty,
+            actualTotalTagPrice: totalTagPrice,
+            differenceQty: 0,
+            liveStockQty: -1,
+          });
         }
       }
 
@@ -1189,7 +1157,6 @@ export function useTeamRequestsLogic(
         skuMismatches,
         quantityShort,
         allItemResults,
-        hasZeroStockItem,
       };
     },
     [getActiveRequestItems, context, productFlowUrl]
@@ -1290,312 +1257,65 @@ export function useTeamRequestsLogic(
       if (!flowApiKey)
         throw new Error("Security key (secret) not found in WorkflowConfiguration");
 
-      // ── STOCK VALIDATION (Approve only) ────────────────────────────────
-      let quantityShort = false;
-      let skuMismatches: SkuMismatch[] = [];
-      // Every checked item (mismatch or not) — used to persist RaiseCount/ApprovalCount
-      // for every SKU on final approval, not just mismatched ones.
-      let allItemResults: SkuMismatch[] = [];
-      let finalTotalQty = row.qty;
-      let finalTotalAmount = row.price;
-      // Final approver = the one whose action should persist mismatch data to
-      // SharePoint. Single-approver records: any approver is final. Multi-stage
-      // records: only the approver at the highest order is final.
-      let isFinalApprover = false;
-
-      if (action === "Approve") {
-        const check = await validateRequestItemsBeforeApprove(row);
-        quantityShort = check.quantityShort;
-        skuMismatches = check.skuMismatches;
-        allItemResults = check.allItemResults;
-
-        // Hard block: any SKU with zero live stock cannot be approved at all.
-        if (check.hasZeroStockItem) {
-          throw new Error("Stock availability for the particular record is zero, so you can't approve this record.");
-        }
-
-        // ── FINAL APPROVER DETECTION ────────────────────────────────────
-        // The final approver is the one at the highest order in the approval
-        // chain. Only the final approver actually writes adjusted quantities
-        // to SharePoint — intermediate approvers just pass mismatch data along.
-        const loginEmail = String(currentUserEmailRaw || "").trim().toLowerCase();
-        const activeLevels = row.allApprovalLevels.filter(
-          (l) => l.canApproveRequest === true
-        );
-        if (!row.hasMultipleApprovals) {
-          // Single-approver record — always the final approver
-          isFinalApprover = true;
-        } else if (activeLevels.length > 0) {
-          // Multi-approver: final = the approver at the highest order
-          const maxOrder = Math.max(...activeLevels.map((l) => l.order));
-          isFinalApprover = activeLevels.some(
-            (l) => l.approverEmail === loginEmail && l.order === maxOrder
-          );
-        }
-
-        // The final approver adjusts short-stock quantities. IMPORTANT: nothing is
-        // written to SharePoint before the Power Automate call — if PA errors, no list
-        // change occurs. Here we only COMPUTE the adjusted totals (in memory) so the PA
-        // payload carries the final figures; the actual writes happen AFTER PA succeeds.
-        // Totals are SUMMED from the approved quantity of every line item — never
-        // derived by subtracting from a cached header total, which could be stale and
-        // drive the result negative. Summing non-negative values can never go below 0.
-        if (isFinalApprover && quantityShort && skuMismatches.length > 0 && allItemResults.length > 0) {
-          let qtySum = 0;
-          let priceSum = 0;
-          for (const m of allItemResults) {
-            const requested = Number.isFinite(Number(m.requestedQty)) ? Number(m.requestedQty) : 0;
-            const availRaw = Number(m.availableQty);
-            // Unverifiable stock (-1) keeps the requested quantity.
-            const adjQty =
-              !Number.isFinite(availRaw) || availRaw === -1 ? requested : Math.max(0, availRaw);
-            const unitPrice = Number.isFinite(Number(m.tagPricePerUnit)) ? Number(m.tagPricePerUnit) : 0;
-            qtySum += adjQty;
-            priceSum += adjQty * unitPrice;
-          }
-          finalTotalQty = Math.max(0, qtySum);
-          finalTotalAmount = Math.max(0, priceSum);
-        }
-      }
-
-      // ── DETAIL VIEW URL ────────────────────────────────────────────────
-      const siteOrigin = String(context.pageContext.web.absoluteUrl || "").replace(/\/$/, "");
-      const detailViewUrl = `${siteOrigin}/SitePages/RequestDetail.aspx?requestId=${row.spId}`;
-
-      // Strip the internal-only liveStockQty field — the Power Automate trigger schema
-      // rejects unknown properties (additionalProperties: false).
-      const payloadSkuMismatches = skuMismatches.map((m) => ({
-        itemId: m.itemId,
-        sku: m.sku,
-        tagPricePerUnit: m.tagPricePerUnit,
-        requestedQty: m.requestedQty,
-        totalTagPrice: m.totalTagPrice,
-        availableQty: m.availableQty,
-        actualTotalTagPrice: m.actualTotalTagPrice,
-        differenceQty: m.differenceQty,
-      }));
-
-      // ── PAYLOAD ────────────────────────────────────────────────────────
-      // totalQuantity / totalTagPrice carry the post-adjustment values so
-      // Power Automate emails show the final approved figures, not the
-      // originally requested ones.
-      const payload: ApprovalFlowPayload = {
-        requestId: row.spId,
+      // All approval logic is shared with the ExportPDF screen via processApproval
+      // (components/ApprovalProcessor.ts). This wrapper only maps the loaded row to
+      // the engine's params and applies the local table-state updates.
+      const result = await processApproval({
+        context,
+        siteUrl,
+        approvalFlowUrl,
+        flowApiKey,
+        productFlowUrl,
+        requestId: Number(row.spId || 0),
+        transactionId: row.id,
         actorEmail: currentUserEmailRaw,
         position: profile?.jobTitle || "",
-        action: action as FlowAction,
+        action,
         comments: comments || "",
-        quantityShort,
-        skuMismatches: payloadSkuMismatches,
-        transactionId: row.id,
-        detailViewUrl,
-        totalQuantity: finalTotalQty,
-        totalTagPrice: finalTotalAmount,
         purpose: row.purpose,
         status: row.status,
-      };
-
-      // ── CALL POWER AUTOMATE ────────────────────────────────────────────
-      const resp = await spPostJson(context, approvalFlowUrl, payload, {
-        "x-api-key": flowApiKey,
+        approvalLevels: row.allApprovalLevels.map((l) => ({
+          order: l.order,
+          approverEmail: l.approverEmail,
+          canApproveRequest: l.canApproveRequest,
+        })),
+        hasMultipleApprovals: row.hasMultipleApprovals,
+        workflowStage: row.workflowStage,
+        requestedTotalQty: row.qty,
+        requestedTotalAmount: row.price,
       });
 
-      const ok =
-        typeof resp?.status === "boolean"
-          ? resp.status
-          : String(resp?.status || "").toLowerCase() === "true"
-            ? true
-            : Boolean(resp?.success);
-
-      const msg = toUserMessage(resp?.message, ok ? "Success" : "Failed");
-      const newStatus = resp?.newStatus ? String(resp.newStatus) : undefined;
-
-      // PA succeeded (spPostJson throws on HTTP error) — persist the adjusted header
-      // totals. NOTE: the line-item Quantity/LineTotal are intentionally NOT overwritten
-      // — the originally requested quantity stays intact and the approved figure is
-      // recorded in ApprovalCount instead.
-      if (isFinalApprover && action === "Approve" && quantityShort && skuMismatches.length > 0) {
-        await context.spHttpClient.post(
-          `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items(${Number(row.spId || 0)})`,
-          SPHttpClient.configurations.v1,
-          {
-            headers: {
-              Accept: "application/json;odata=nometadata",
-              "Content-Type": "application/json;odata=nometadata",
-              "odata-version": "",
-              "IF-MATCH": "*",
-              "X-HTTP-Method": "MERGE",
-            },
-            body: JSON.stringify({
-              // Hard guard: never store a negative total in SharePoint.
-              TotalQuantity: Math.max(0, Number(finalTotalQty) || 0),
-              TotalAmount: Math.max(0, Number(finalTotalAmount) || 0),
-            }),
-          }
-        );
-      }
-
-      // Persist RaiseCount / ApprovalCount / StockAvailability for every checked item —
-      // mismatched or not (best-effort, non-fatal). Same final-approver rule as the
-      // Quantity/Total update above — intermediate approvers in a multi-stage chain
-      // must not write.
-      console.log("[EForm Approval] column-write gate:", {
-        isFinalApprover,
-        action,
-        allItemResults: allItemResults.length,
-        willWrite: isFinalApprover && action === "Approve" && allItemResults.length > 0,
-      });
-      if (isFinalApprover && action === "Approve" && allItemResults.length > 0) {
-        try {
-          const CHUNK = 8;
-          for (let i = 0; i < allItemResults.length; i += CHUNK) {
-            const chunk = allItemResults.slice(i, i + CHUNK);
-            await Promise.all(
-              chunk.map((m) => {
-                // Coerce to finite numbers — an undefined/NaN value would be dropped or
-                // sent as null by JSON.stringify, leaving the column blank.
-                const requested = Number.isFinite(Number(m.requestedQty)) ? Number(m.requestedQty) : 0;
-                const availRaw = Number(m.availableQty);
-                // Items whose live stock could not be verified (-1) still record
-                // RaiseCount/ApprovalCount from the requested quantity; only
-                // StockAvailability is omitted, since the live figure is unknown.
-                const approved =
-                  !Number.isFinite(availRaw) || availRaw === -1 ? requested : availRaw;
-                const unitPrice = Number.isFinite(Number(m.tagPricePerUnit))
-                  ? Number(m.tagPricePerUnit)
-                  : 0;
-                const fields: Record<string, number> = {
-                  RaiseCount: requested,
-                  ApprovalCount: approved,
-                  // LineTotal reflects the APPROVED quantity (Quantity itself is left as
-                  // originally requested), so it matches the header TotalAmount.
-                  LineTotal: Math.max(0, approved * unitPrice),
-                };
-                const liveRaw = Number(m.liveStockQty);
-                if (Number.isFinite(liveRaw) && liveRaw >= 0) fields.StockAvailability = liveRaw;
-                return context.spHttpClient.post(
-                  `${siteUrl}/_api/web/lists/getbytitle('InventoryRequestItems')/items(${m.itemId})`,
-                  SPHttpClient.configurations.v1,
-                  {
-                    headers: {
-                      Accept: "application/json;odata=nometadata",
-                      "Content-Type": "application/json;odata=nometadata",
-                      "odata-version": "",
-                      "IF-MATCH": "*",
-                      "X-HTTP-Method": "MERGE",
-                    },
-                    body: JSON.stringify(fields),
-                  }
-                );
-              })
-            );
-          }
-          console.log(
-            `[EForm Approval] Wrote RaiseCount/ApprovalCount/StockAvailability for ${allItemResults.length} item(s).`
-          );
-        } catch (err) {
-          console.error("[TeamService] RaiseCount/ApprovalCount update failed:", err);
-        }
-      }
-
-      // ── INTERMEDIATE MULTI-STAGE APPROVAL ─────────────────────────────
-      // When A1 approves but there are still more stages (e.g. C1 approves,
-      // C2 still needs to), Power Automate does not reliably set
-      // WorkflowStatus → "In Approval" or flip CurrentApproverEmail to the
-      // next approver. The frontend does it directly so A2 sees the record
-      // immediately with the correct status and can act on it.
-      if (ok && action === "Approve" && row.hasMultipleApprovals) {
-        const loginEmail = String(currentUserEmailRaw || "").trim().toLowerCase();
-
-        const approveableLevels = row.allApprovalLevels
-          .filter((l) => l.canApproveRequest)
-          .sort((a, b) => a.order - b.order);
-
-        const currentLevelIdx = approveableLevels.findIndex(
-          (l) => l.approverEmail === loginEmail
-        );
-
-        const isIntermediateApproval =
-          currentLevelIdx >= 0 &&
-          currentLevelIdx < approveableLevels.length - 1;
-
-        if (isIntermediateApproval) {
-          const nextLevel = approveableLevels[currentLevelIdx + 1];
-          const nextStage = row.workflowStage + 1;
-
-          // Resolve next approver's SharePoint user ID (non-blocking on error)
-          let nextApproverId: number | undefined;
-          try {
-            const ensureUrl =
-              `${siteUrl}/_api/web/ensureUser('${nextLevel.approverEmail.replace(/'/g, "''")}')`;
-            const ensureRes = await context.spHttpClient.post(
-              ensureUrl,
-              SPHttpClient.configurations.v1,
-              {
-                headers: { "Content-Type": "application/json;odata=verbose" },
-                body: JSON.stringify({}),
-              }
-            );
-            if (ensureRes.ok) {
-              const ensureJson = (await ensureRes.json()) as { Id?: number };
-              nextApproverId = ensureJson.Id;
-            }
-          } catch { /* non-blocking */ }
-
-          // Write the intermediate state to SharePoint
-          await context.spHttpClient.post(
-            `${siteUrl}/_api/web/lists/getbytitle('InventoryRequests')/items(${row.spId})`,
-            SPHttpClient.configurations.v1,
-            {
-              headers: {
-                Accept: "application/json;odata=nometadata",
-                "Content-Type": "application/json;odata=nometadata",
-                "odata-version": "",
-                "IF-MATCH": "*",
-                "X-HTTP-Method": "MERGE",
-              },
-              body: JSON.stringify({
-                WorkflowStatus: "In Approval",
-                WorkflowStage: nextStage,
-                CurrentApproverEmail: nextLevel.approverEmail,
-                ...(nextApproverId ? { CurrentApproverId: nextApproverId } : {}),
-                LastUpdatedOn: new Date().toISOString(),
-              }),
-            }
-          );
-
-          // Update local row so the table reflects the change immediately
-          setRows((prev) =>
-            prev.map((r) =>
-              r.spId === row.spId
-                ? {
-                    ...r,
-                    status: "In Approval",
-                    workflowStage: nextStage,
-                    currentApproverEmail: nextLevel.approverEmail,
-                    currentApproverId: nextApproverId || 0,
-                    qty: finalTotalQty,
-                    price: finalTotalAmount,
-                    lastActivityIso: new Date().toISOString(),
-                  }
-                : r
-            )
-          );
-
-          return { success: true, message: msg, newStatus: "In Approval" };
-        }
-      }
-
-      // ── UPDATE LOCAL ROW STATE on success (final approval / rejection) ──
-      if (ok && newStatus) {
+      // Intermediate multi-stage approval: reflect the hand-off in the local row.
+      if (result.success && result.isIntermediate) {
         setRows((prev) =>
           prev.map((r) =>
             r.spId === row.spId
               ? {
                   ...r,
-                  status: newStatus,
-                  qty: finalTotalQty,
-                  price: finalTotalAmount,
+                  status: "In Approval",
+                  workflowStage: result.nextStage ?? row.workflowStage,
+                  currentApproverEmail: result.nextApproverEmail || "",
+                  currentApproverId: result.nextApproverId || 0,
+                  qty: result.finalTotalQty,
+                  price: result.finalTotalAmount,
+                  lastActivityIso: new Date().toISOString(),
+                }
+              : r
+          )
+        );
+        return { success: true, message: result.message, newStatus: "In Approval" };
+      }
+
+      // Final approval / rejection: update the local row.
+      if (result.success && result.newStatus) {
+        setRows((prev) =>
+          prev.map((r) =>
+            r.spId === row.spId
+              ? {
+                  ...r,
+                  status: result.newStatus as string,
+                  qty: result.finalTotalQty,
+                  price: result.finalTotalAmount,
                   approver: "",
                   currentApproverId: 0,
                   currentApproverEmail: "",
@@ -1606,7 +1326,7 @@ export function useTeamRequestsLogic(
         );
       }
 
-      return { success: ok, message: msg, newStatus };
+      return { success: result.success, message: result.message, newStatus: result.newStatus };
     },
     [
       context,
@@ -1614,9 +1334,8 @@ export function useTeamRequestsLogic(
       flowApiKey,
       currentUserEmailRaw,
       profile,
-      validateRequestItemsBeforeApprove,
-      getActiveRequestItems,
       siteUrl,
+      productFlowUrl,
     ]
   );
 

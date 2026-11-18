@@ -6,10 +6,12 @@ module.exports = {
   moduleNameMapper: {
     "\\.(css|scss)$": "identity-obj-proxy",
     "\\.(png|jpg|jpeg|gif|svg)$": "<rootDir>/__mocks__/fileMock.js",
-    "EformWebPartStrings": "<rootDir>/src/__mocks__/strings.ts",
-    "^@microsoft/sp-core-library$": "<rootDir>/__mocks__/@microsoft/sp-core-library.js",
-    "^@microsoft/sp-http$": "<rootDir>/__mocks__/@microsoft/sp-http.js",
-    "^@microsoft/sp-webpart-base$": "<rootDir>/__mocks__/@microsoft/sp-webpart-base.js"
+    "EformWebPartStrings": "<rootDir>/src/lib/strings.ts",
+    "^@microsoft/sp-core-library$": "<rootDir>/src/lib/spShim.ts",
+    "^@microsoft/sp-http$": "<rootDir>/src/lib/spShim.ts",
+    "^@microsoft/sp-webpart-base$": "<rootDir>/src/lib/spShim.ts",
+    "^@microsoft/sp-component-base$": "<rootDir>/src/lib/spShim.ts",
+    "^@microsoft/sp-property-pane$": "<rootDir>/src/lib/spShim.ts"
   },
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
   collectCoverageFrom: [

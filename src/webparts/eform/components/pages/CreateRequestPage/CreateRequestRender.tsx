@@ -521,6 +521,18 @@ export default function CreateRequestRender(props: Props): JSX.Element {
               )}
             </div>
 
+            {/* Quick link to the full product catalogue for users who don't know the SKU */}
+            <div className="mb-4 flex items-center gap-1.5 text-[12px] text-gray-700">
+              <span>Don&rsquo;t know the product SKU?</span>
+              <button
+                type="button"
+                onClick={() => onNavigate("itemCategory")}
+                className="text-[#6099E3] cursor-pointer underline font-medium hover:text-[#2172DA]"
+              >
+                View all product SKUs
+              </button>
+            </div>
+
             <div className="space-y-2" >
 
 

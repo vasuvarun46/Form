@@ -39,14 +39,11 @@ const canAccessRoute = (
   return false;
 };
 
-// ── Parse deep-link params — tries window.top (same-origin SPFx iframe) ──
-// Returns parsed params or undefined. Safe to call multiple times.
+// Returns parsed deep-link params or undefined. Safe to call multiple times.
 function _readDlParams(): { requestId: number; transactionId?: string; fromHash?: boolean } | undefined {
   try {
     // 1. Email deep-link: ?requestId=N&transactionId=T
-    let search = window.location.search;
-    try { search = window.top?.location?.search ?? search; } catch { /* cross-origin — use iframe URL */ }
-    const p = new URLSearchParams(search);
+    const p = new URLSearchParams(window.location.search);
     const rid = p.get("requestId") || p.get("RequestId");
     if (rid) {
       const n = parseInt(rid, 10);
@@ -56,9 +53,7 @@ function _readDlParams(): { requestId: number; transactionId?: string; fromHash?
       }
     }
     // 2. Refresh-restore: #/details/N written after successful deep-link navigation
-    let hash = window.location.hash;
-    try { hash = window.top?.location?.hash ?? hash; } catch { /* cross-origin */ }
-    const m = hash.match(/^#\/details\/(\d+)$/);
+    const m = window.location.hash.match(/^#\/details\/(\d+)$/);
     if (m) {
       const n = parseInt(m[1], 10);
       if (!isNaN(n) && n > 0) return { requestId: n, transactionId: undefined, fromHash: true };
@@ -69,14 +64,9 @@ function _readDlParams(): { requestId: number; transactionId?: string; fromHash?
 // Try once at module load — may be undefined if window.top is cross-origin at this point
 const _dlParams = _readDlParams();
 
-// ── Parse hash-based deep-link route (my / team / all / create) ──
-// SPFx workbench runs the web part inside a same-origin iframe, so
-// window.location is the iframe URL — the address-bar URL lives in window.top.
+// Parse hash-based deep-link route (my / team / all / create)
 const _HASH_ROUTES: Record<string, Route> = { "/my": "my", "/team": "team", "/all": "all", "/create": "create" };
-const _getTopHash = (): string => {
-  try { return window.top?.location?.hash ?? window.location.hash; }
-  catch { return window.location.hash; }
-};
+const _getTopHash = (): string => window.location.hash;
 const _hashRoute = (() => {
   try {
     const h = _getTopHash();
@@ -171,11 +161,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
       const webUrl = context.pageContext.web.absoluteUrl;
       const myEmail = String(context.pageContext.user.email || "").toLowerCase().trim();
       const _cleanDlUrl = (hash: string): void => {
-        const myClean = window.location.pathname + hash;
-        let topClean = myClean;
-        try { topClean = (window.top?.location?.pathname ?? window.location.pathname) + hash; } catch { /* cross-origin */ }
-        try { window.top?.history?.replaceState(null, "", topClean); } catch { /* cross-origin guard */ }
-        try { history.replaceState(null, "", myClean); } catch { /* ignore */ }
+        try { history.replaceState(null, "", window.location.pathname + hash); } catch { /* ignore */ }
       };
       const url =
         `${webUrl}/_api/web/lists/getbytitle('InventoryRequests')/items(${requestId})` +
@@ -306,15 +292,8 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
     const webUrl = context.pageContext.web.absoluteUrl;
     const myEmail = String(context.pageContext.user.email || "").toLowerCase().trim();
 
-    // Remove the deep-link query params from the address bar.
-    // Done here (in the effect) rather than in syncHash so the URL is clean
-    // before any user interaction, and replaceState means back won't restore them.
     const _cleanDlUrl = (hash: string): void => {
-      const myClean = window.location.pathname + hash;
-      let topClean = myClean;
-      try { topClean = (window.top?.location?.pathname ?? window.location.pathname) + hash; } catch { /* cross-origin */ }
-      try { window.top?.history?.replaceState(null, "", topClean); } catch { /* cross-origin guard */ }
-      try { history.replaceState(null, "", myClean); } catch { /* ignore */ }
+      try { history.replaceState(null, "", window.location.pathname + hash); } catch { /* ignore */ }
     };
 
     // Fetch the record including ApprovalChainJSON, WorkflowStatus and requester email
@@ -531,11 +510,7 @@ const Eform: React.FC<IEformProps> = ({ context, flowUrl, ApprovalFlowUrl }) => 
   const syncHash = (r: Route, spId?: number): void => {
     let h = (r === "my" || r === "team" || r === "all" || r === "create") ? `#/${r}` : "#";
     if (r === "exportPdf" && spId) h = `#/details/${spId}`;
-    const myClean = window.location.pathname + h;
-    let topClean = myClean;
-    try { topClean = (window.top?.location?.pathname ?? window.location.pathname) + h; } catch { /* cross-origin */ }
-    try { window.top?.history?.replaceState(null, "", topClean); } catch { /* cross-origin guard */ }
-    try { history.replaceState(null, "", myClean); } catch { /* ignore */ }
+    try { history.replaceState(null, "", window.location.pathname + h); } catch { /* ignore */ }
   };
 
   const safeNavigate = (r: Route, state?: RouteState, spId?: number): void => {

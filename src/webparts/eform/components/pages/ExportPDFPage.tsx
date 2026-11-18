@@ -1257,10 +1257,13 @@ export default function ExportPDFPage({
         try {
           rowsRaw = await fetchAllPages(urlLookup);
         } catch {
-          // Fallback: try without expand (use numeric lookup field directly)
+          // Fallback: try without expand (use numeric lookup field directly).
+          // ApprovalCount is deliberately omitted here so the line items still render
+          // if that column is missing/renamed — the mapper treats an absent value as
+          // null and the Quantity column then falls back to the requested quantity.
           const urlNumber =
             `${webUrl}/_api/web/lists/getbytitle('${childListTitle}')/items` +
-            `?$select=Id,${colTitle},${colLineNumber},${colSku},${colDesc},${colColor},${colSize},${colUnitPrice},${colQty},${colApprovalCount},${colLineTotal},${colLookupSource},${colRowStatus},${requestLookupInternal}` +
+            `?$select=Id,${colTitle},${colLineNumber},${colSku},${colDesc},${colColor},${colSize},${colUnitPrice},${colQty},${colLineTotal},${colLookupSource},${colRowStatus},${requestLookupInternal}` +
             `&$filter=${requestLookupInternal} eq ${spId} and ${colRowStatus} eq 'Active'` +
             `&$orderby=${colLineNumber} asc` +
             `&$top=5000`;
@@ -1438,8 +1441,16 @@ export default function ExportPDFPage({
   // is approved it shows the approved quantity (ApprovalCount) instead.
   const isFinallyApproved =
     normalizeApprovalStatus(exportData?.workflowStatus) === "Approved";
+  // Only a finite, non-negative ApprovalCount is shown. Legacy rows may hold the
+  // -1 "unverifiable" sentinel, and a non-numeric cell yields NaN — both would
+  // otherwise render literally and corrupt the Grand Total.
   const getDisplayQty = (r: LineItem): number =>
-    isFinallyApproved && r.approvalCount !== null ? r.approvalCount : r.quantity;
+    isFinallyApproved &&
+    r.approvalCount !== null &&
+    Number.isFinite(r.approvalCount) &&
+    r.approvalCount >= 0
+      ? r.approvalCount
+      : r.quantity;
 
   const totalQty = lineItems.reduce((s, x) => s + getDisplayQty(x), 0);
   const totalPrice = lineItems.reduce((s, x) => s + x.lineTotal, 0);
